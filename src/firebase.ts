@@ -1,5 +1,5 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, signInWithRedirect, GoogleAuthProvider } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import firebaseConfig from "../firebase-applet-config.json";
 
@@ -14,13 +14,19 @@ googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
 
-// Standard login popup
+// Standard login
 export async function loginWithGoogle() {
   try {
+    const { signInWithPopup } = await import("firebase/auth");
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Firebase Google Auth Error:", error);
+    if (error.code === 'auth/popup-blocked' || error.message?.toLowerCase().includes('popup') || error.message?.toLowerCase().includes('cross-origin') || error.message?.toLowerCase().includes('opener')) {
+      const { signInWithRedirect } = await import("firebase/auth");
+      await signInWithRedirect(auth, googleProvider);
+      return null;
+    }
     throw error;
   }
 }

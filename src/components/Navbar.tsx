@@ -46,13 +46,13 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
             <FileText className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-sans font-bold text-lg tracking-tight flex items-center space-x-2">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400">LaoDocs Pro</span>
-              <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">
+            <h1 className="font-sans font-bold text-base sm:text-lg tracking-tight flex items-center space-x-2">
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate">LaoDocs Pro</span>
+              <span className="hidden sm:inline-block text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">
                 {isLao ? 'ໝວດເອກະສານ' : 'Document Pro'}
               </span>
             </h1>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-wide leading-none">{isLao ? 'ລະບົບຄຸ້ມຄອງເອກະສານທາງການ' : 'Formal Document Manager'}</p>
+            <p className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-wide leading-none truncate">{isLao ? 'ລະບົບຄຸ້ມຄອງເອກະສານທາງການ' : 'Formal Document Manager'}</p>
           </div>
         </div>
 
@@ -150,7 +150,8 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
                   <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
-                <span>{isLao ? "ເຂົ້າສູ່ລະບົບ (Google)" : "Sign In with Google"}</span>
+                <span className="hidden sm:inline">{isLao ? "ເຂົ້າສູ່ລະບົບ (Google)" : "Sign In with Google"}</span>
+                <span className="sm:hidden">{isLao ? "ເຂົ້າສູ່ລະບົບ" : "Sign In"}</span>
               </button>
             </div>
           )}

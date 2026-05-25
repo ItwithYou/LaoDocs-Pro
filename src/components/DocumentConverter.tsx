@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { UserProfile, LaoLetterDocument, SUBSCRIPTION_PLANS, DocumentTemplate } from "../types";
 import { db, handleFirestoreError, OperationType } from "../firebase";
 import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy } from "firebase/firestore";
-import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw } from "lucide-react";
+import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock } from "lucide-react";
 
 interface DocumentConverterProps {
   userProfile: UserProfile | null;
@@ -11,9 +11,10 @@ interface DocumentConverterProps {
   selectedDocument: LaoLetterDocument | null;
   onClearSelected: () => void;
   onRequireLogin?: () => void;
+  onUpgradeClick?: () => void;
 }
 
-export default function DocumentConverter({ userProfile, documents, onDocumentSaved, selectedDocument, onClearSelected, onRequireLogin }: DocumentConverterProps) {
+export default function DocumentConverter({ userProfile, documents, onDocumentSaved, selectedDocument, onClearSelected, onRequireLogin, onUpgradeClick }: DocumentConverterProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -43,15 +44,15 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         const snap = await getDocs(q);
         const types = snap.docs.map(d => ({id: d.id, ...d.data()}) as AIDocumentType);
         setAiTypes(types);
-        if (types.length > 0) setSelectedAiType(types[0].id || "");
+        if (types.length > 0 && !selectedAiType) setSelectedAiType(types[0].id || "");
       } catch (e) {
         console.error("Failed to fetch ai types", e);
       }
     };
     
-    fetchTemplates();
-    fetchAiTypes();
-  }, []);
+    if (activeTab === "templates") fetchTemplates();
+    if (activeTab === "generate") fetchAiTypes();
+  }, [activeTab]);
 
   // Gemini Response states (if we just translated / formatted a new doc)
   const [convertedResult, setConvertedResult] = useState<any | null>(null);
@@ -183,7 +184,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     }
   };
 
-  const handleGenerateAction = async (draftText: string, instruction: string) => {
+  const handleGenerateAction = async (draftText: string, instruction: string, referenceFileBase64?: string, referenceFileMimeType?: string) => {
     if (!userProfile && guestConversionsLeft <= 0) {
       setParsingError("You have used all 3 guest trials. Please log in or upgrade to continue.");
       return;
@@ -194,11 +195,17 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     setConvertedResult(null);
 
     try {
-      const payload = {
+      const payload: any = {
         rawLaoText: draftText,
         promptType: "generate",
         documentContext: instruction
       };
+      
+      if (referenceFileBase64 && referenceFileMimeType) {
+        payload.referenceFormatFileBase64 = referenceFileBase64;
+        payload.referenceFormatFileMimeType = referenceFileMimeType;
+      }
+      
       const response = await fetch("/api/gemini/convert", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -616,24 +623,45 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
               ອັບໂຫຼດຟາຍ (PDF / ຮູບພາບ)
             </button>
             <button
-              onClick={() => { setActiveTab("generate"); setParsingError(null); }}
+              onClick={() => { 
+                if (!userProfile || userProfile.subscriptionTier === "free") {
+                  if (onUpgradeClick) {
+                    onUpgradeClick();
+                  } else {
+                    setParsingError("Please upgrade to Pro or Ultra to use AI Document Draft.");
+                  }
+                  return;
+                }
+                setActiveTab("generate"); setParsingError(null); 
+              }}
               className={`flex-1 py-3.5 whitespace-nowrap text-[10px] sm:text-xs font-bold text-center border-b-2 transition px-2 flex items-center justify-center gap-1.5 ${
                 activeTab === "generate"
                   ? "border-emerald-500 text-emerald-600 dark:text-emerald-400 bg-emerald-50/50 dark:bg-emerald-900/10"
                   : "border-transparent text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400"
               }`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              {(!userProfile || userProfile.subscriptionTier === "free") ? <Lock className="w-3.5 h-3.5 opacity-60" /> : <Sparkles className="w-3.5 h-3.5" />}
               ຮ່າງເອກະສານ (AI Draft)
             </button>
             <button
-              onClick={() => { setActiveTab("templates"); setParsingError(null); }}
-              className={`flex-1 py-3.5 whitespace-nowrap text-[10px] sm:text-xs font-bold text-center border-b-2 transition px-2 ${
+              onClick={() => { 
+                if (!userProfile || userProfile.subscriptionTier === "free") {
+                  if (onUpgradeClick) {
+                    onUpgradeClick();
+                  } else {
+                    setParsingError("Please upgrade to Pro or Ultra to access Official Templates.");
+                  }
+                  return;
+                }
+                setActiveTab("templates"); setParsingError(null); 
+              }}
+              className={`flex-1 py-3.5 whitespace-nowrap text-[10px] sm:text-xs font-bold text-center border-b-2 transition px-2 flex items-center justify-center gap-1.5 ${
                 activeTab === "templates"
                   ? "border-indigo-600 text-slate-950 dark:text-white bg-white dark:bg-slate-800"
                   : "border-transparent text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
               }`}
             >
+              {(!userProfile || userProfile.subscriptionTier === "free") && <Lock className="w-3.5 h-3.5 opacity-60" />}
               ແບບຟອມ (Templates)
             </button>
             <button
@@ -737,14 +765,15 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                 <div className="flex justify-end pt-2">
                   <button
                     onClick={() => {
-                        const aiInstruction = aiTypes.find(t => t.id === selectedAiType)?.instructions || "";
+                        const aiType = aiTypes.find(t => t.id === selectedAiType);
+                        if (aiTypes.length === 0) { setParsingError("No document types available. Admin needs to add them first."); return; }
                         if (!selectedAiType) { setParsingError("Please select a document type"); return; }
                         if (!draftText.trim()) { setParsingError("Please write what you want to generate"); return; }
-                        handleGenerateAction(draftText, aiInstruction);
+                        handleGenerateAction(draftText, aiType?.instructions || "", aiType?.referenceFileBase64, aiType?.referenceFileMimeType);
                     }}
-                    disabled={isProcessing || !draftText.trim() || !selectedAiType}
+                    disabled={isProcessing}
                     className={`px-6 py-2.5 rounded-full text-xs font-bold transition flex items-center shadow-lg transform active:scale-95 space-x-2 ${
-                      isProcessing || !draftText.trim() || !selectedAiType
+                      isProcessing 
                         ? "bg-slate-100 text-slate-400 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed"
                         : "bg-emerald-600 hover:bg-emerald-500 hover:shadow-emerald-500/25 text-white cursor-pointer"
                     }`}

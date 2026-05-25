@@ -16,7 +16,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [aiTypes, setAiTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'templates' | 'aitypes'>('requests');
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'templates' | 'aitypes' | 'bankqrs'>('requests');
   
   const [bankQrUrlPro, setBankQrUrlPro] = useState("");
   const [bankQrUrlUltra, setBankQrUrlUltra] = useState("");
@@ -27,10 +27,13 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateFile, setTemplateFile] = useState<{name: string, data: string} | null>(null);
   const [isUploadingTemplate, setIsUploadingTemplate] = useState(false);
+  const templateFileInputRef = React.useRef<HTMLInputElement>(null);
 
   // AI Type Form
   const [aiTypeName, setAiTypeName] = useState("");
   const [aiTypeInstructions, setAiTypeInstructions] = useState("");
+  const [aiTypeFile, setAiTypeFile] = useState<{name: string, data: string, mimeType: string} | null>(null);
+  const aiTypeFileInputRef = React.useRef<HTMLInputElement>(null);
   const [isSavingAiType, setIsSavingAiType] = useState(false);
 
   useEffect(() => {
@@ -157,6 +160,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
       setTemplateName("");
       setTemplateDescription("");
       setTemplateFile(null);
+      if (templateFileInputRef.current) templateFileInputRef.current.value = "";
       fetchTemplates();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message });
@@ -177,6 +181,19 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     setTimeout(() => setMessage(null), 5000);
   };
 
+  const handleAiTypeFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = event.target?.result as string;
+      const mimeType = file.type || data.substring(data.indexOf(":")+1, data.indexOf(";"));
+      const base64Only = data.split(",")[1] || data;
+      setAiTypeFile({ name: file.name, data: base64Only, mimeType });
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSaveAiType = async () => {
     if (!aiTypeName || !aiTypeInstructions) {
       setMessage({ type: 'error', text: 'Name and instructions are required.' });
@@ -186,14 +203,24 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
     setIsSavingAiType(true);
     try {
       const newRef = doc(collection(db, "aitypes"));
-      await setDoc(newRef, {
+      const payload: any = {
         name: aiTypeName,
         instructions: aiTypeInstructions,
         createdAt: new Date().toISOString()
-      });
+      };
+      
+      if (aiTypeFile) {
+        payload.referenceFileName = aiTypeFile.name;
+        payload.referenceFileBase64 = aiTypeFile.data;
+        payload.referenceFileMimeType = aiTypeFile.mimeType;
+      }
+      
+      await setDoc(newRef, payload);
       setMessage({ type: 'success', text: "AI Type added successfully." });
       setAiTypeName("");
       setAiTypeInstructions("");
+      setAiTypeFile(null);
+      if (aiTypeFileInputRef.current) aiTypeFileInputRef.current.value = "";
       fetchAiTypes();
     } catch (err: any) {
       setMessage({ type: 'error', text: err.message });
@@ -386,61 +413,62 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
             </div>
           )}
           
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
-            <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm flex items-center gap-2">
-              <Upload className="w-4 h-4 text-tiffany-500" />
-              Bank QR Code Configuration
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Upload Bank QR Code images to display to users in the subscription modal.</p>
-            <div className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pro Plan QR Code</label>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="file" 
-                    accept="image/png, image/jpeg, image/jpg"
-                    onChange={(e) => handleFileUpload(e, 'pro')}
-                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400"
-                  />
-                  {bankQrUrlPro && (
-                    <img src={bankQrUrlPro} alt="Pro QR Preview" className="h-10 w-10 object-cover border border-slate-200 rounded-lg" />
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Ultra Plan QR Code</label>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="file" 
-                    accept="image/png, image/jpeg, image/jpg"
-                    onChange={(e) => handleFileUpload(e, 'ultra')}
-                    className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400"
-                  />
-                  {bankQrUrlUltra && (
-                    <img src={bankQrUrlUltra} alt="Ultra QR Preview" className="h-10 w-10 object-cover border border-slate-200 rounded-lg" />
-                  )}
-                </div>
-              </div>
-              <div className="flex justify-end">
-                <button 
-                  onClick={handleSaveBankQr}
-                  disabled={isSavingQr || (!bankQrUrlPro && !bankQrUrlUltra)}
-                  className="bg-tiffany-600 hover:bg-tiffany-700 text-white font-bold py-2 px-6 rounded-lg text-sm transition shadow-sm disabled:opacity-75 mt-2"
-                >
-                  {isSavingQr ? 'Saving...' : 'Save QRs'}
-                </button>
-              </div>
-            </div>
-          </div>
-
           <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
             <button onClick={() => setActiveTab('requests')} className={`text-sm font-bold whitespace-nowrap ${activeTab === 'requests' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Payment Requests</button>
             <button onClick={() => setActiveTab('users')} className={`text-sm font-bold whitespace-nowrap ${activeTab === 'users' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Registered Users</button>
             <button onClick={() => setActiveTab('templates')} className={`text-sm font-bold whitespace-nowrap ${activeTab === 'templates' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Official Templates</button>
             <button onClick={() => setActiveTab('aitypes')} className={`text-sm font-bold whitespace-nowrap ${activeTab === 'aitypes' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>AI Doc Types</button>
+            <button onClick={() => setActiveTab('bankqrs')} className={`text-sm font-bold whitespace-nowrap ${activeTab === 'bankqrs' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Bank QRs</button>
           </div>
 
-          {activeTab === 'aitypes' ? (
+          {activeTab === 'bankqrs' ? (
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm flex items-center gap-2">
+                <Upload className="w-4 h-4 text-tiffany-500" />
+                Bank QR Code Configuration
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Upload Bank QR Code images to display to users in the subscription modal.</p>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Pro Plan QR Code</label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="file" 
+                      accept="image/png, image/jpeg, image/jpg"
+                      onChange={(e) => handleFileUpload(e, 'pro')}
+                      className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400"
+                    />
+                    {bankQrUrlPro && (
+                      <img src={bankQrUrlPro} alt="Pro QR Preview" className="h-10 w-10 object-cover border border-slate-200 rounded-lg" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Ultra Plan QR Code</label>
+                  <div className="flex items-center gap-3">
+                    <input 
+                      type="file" 
+                      accept="image/png, image/jpeg, image/jpg"
+                      onChange={(e) => handleFileUpload(e, 'ultra')}
+                      className="flex-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400"
+                    />
+                    {bankQrUrlUltra && (
+                      <img src={bankQrUrlUltra} alt="Ultra QR Preview" className="h-10 w-10 object-cover border border-slate-200 rounded-lg" />
+                    )}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <button 
+                    onClick={handleSaveBankQr}
+                    disabled={isSavingQr || (!bankQrUrlPro && !bankQrUrlUltra)}
+                    className="bg-tiffany-600 hover:bg-tiffany-700 text-white font-bold py-2 px-6 rounded-lg text-sm transition shadow-sm disabled:opacity-75 mt-2"
+                  >
+                    {isSavingQr ? 'Saving...' : 'Save QRs'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'aitypes' ? (
             <div className="space-y-6">
                <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-200 dark:border-slate-700">
                  <h3 className="font-bold text-slate-900 dark:text-white mb-4">Add AI Generation Document Type</h3>
@@ -452,6 +480,11 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                    <div>
                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">AI Instructions / Context</label>
                      <textarea rows={4} value={aiTypeInstructions} onChange={(e) => setAiTypeInstructions(e.target.value)} className="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white" placeholder="Provide system instructions to the AI on how to format this type of document..." />
+                   </div>
+                   <div>
+                     <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Format Guide File (Optional Reference)</label>
+                     <input type="file" ref={aiTypeFileInputRef} accept=".docx,.doc,.pdf" onChange={handleAiTypeFileUpload} className="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400" />
+                     <p className="text-[10px] text-slate-500 mt-1">Upload a real formatted document so AI uses it to learn the layout exactly.</p>
                    </div>
                    <button onClick={handleSaveAiType} disabled={isSavingAiType} className="bg-tiffany-600 hover:bg-tiffany-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
                      <Upload className="w-4 h-4" />
@@ -496,7 +529,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
                    </div>
                    <div>
                      <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Template File (.docx)</label>
-                     <input type="file" accept=".docx,.doc,.pdf" onChange={handleTemplateFileUpload} className="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400" />
+                     <input type="file" ref={templateFileInputRef} accept=".docx,.doc,.pdf" onChange={handleTemplateFileUpload} className="mt-1 w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white file:mr-4 file:py-1 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-tiffany-50 file:text-tiffany-700 hover:file:bg-tiffany-100 dark:file:bg-slate-800 dark:file:text-tiffany-400" />
                    </div>
                    <button onClick={handleSaveTemplate} disabled={isUploadingTemplate} className="bg-tiffany-600 hover:bg-tiffany-700 text-white px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2">
                      <Upload className="w-4 h-4" />

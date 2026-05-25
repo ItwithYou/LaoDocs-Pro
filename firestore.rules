@@ -27,31 +27,31 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
     
+    match /templates/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+    match /aitypes/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
 
     function isValidUser(data) {
       return data.userId == request.auth.uid
         && data.email is string && data.email.size() <= 200
-        && (data.displayName == null || (data.displayName is string && data.displayName.size() <= 200))
-        && (data.birthday == null || (data.birthday is string && data.birthday.size() <= 100))
-        && (data.profilePhoto == null || (data.profilePhoto is string && data.profilePhoto.size() <= 3000000))
-        && (data.subscriptionEnd == null || (data.subscriptionEnd is string) || (data.subscriptionEnd is timestamp))
-        && (data.subscriptionTier == 'free' || data.subscriptionTier == 'pro' || data.subscriptionTier == 'ultra');
+        && (data.get('displayName', null) == null || (data.displayName is string && data.displayName.size() <= 200))
+        && (data.get('birthday', null) == null || (data.birthday is string && data.birthday.size() <= 100))
+        && (data.get('profilePhoto', null) == null || (data.profilePhoto is string && data.profilePhoto.size() <= 3000000))
+        && (data.get('subscriptionEnd', null) == null || (data.subscriptionEnd is string) || (data.subscriptionEnd is timestamp))
+        && (data.get('subscriptionTier', 'free') == 'free' || data.subscriptionTier == 'pro' || data.subscriptionTier == 'ultra');
     }
 
     match /users/{userId} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      // Create user details securely matching authenticated user
-      allow create: if isSignedIn() && (request.auth.uid == userId)
-        && isValidUser(request.resource.data)
-        && request.resource.data.createdAt == request.time
-        && request.resource.data.subscriptionTier == (isAdmin() ? request.resource.data.subscriptionTier : 'free')
-        && (request.resource.data.role == null || request.resource.data.role == (isAdmin() ? request.resource.data.role : 'user'));
-      // Update subscriptions or names safely
-      allow update: if isAdmin() || (isSignedIn() && (request.auth.uid == userId)
-        && isValidUser(request.resource.data)
-        && request.resource.data.createdAt == resource.data.createdAt
-        && (request.resource.data.role == null || request.resource.data.role == resource.data.role)
-        && request.resource.data.subscriptionTier == (isAdmin() ? request.resource.data.subscriptionTier : resource.data.subscriptionTier));
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && request.auth.uid == userId;
       allow delete: if false;
     }
 
@@ -67,13 +67,13 @@ service cloud.firestore {
       return data.documentId is string && data.documentId.size() <= 128
         && data.ownerId == request.auth.uid
         && data.title is string && data.title.size() <= 200
-        && (data.sender == null || (data.sender is string && data.sender.size() <= 200))
-        && (data.receiver == null || (data.receiver is string && data.receiver.size() <= 200))
-        && (data.sourceType == null || (data.sourceType is string && data.sourceType.size() <= 50))
-        && (data.originalText == null || (data.originalText is string && data.originalText.size() <= 1000000))
-        && (data.convertedText == null || (data.convertedText is string && data.convertedText.size() <= 1000000))
+        && (data.get('sender', null) == null || (data.sender is string && data.sender.size() <= 200))
+        && (data.get('receiver', null) == null || (data.receiver is string && data.receiver.size() <= 200))
+        && (data.get('sourceType', null) == null || (data.sourceType is string && data.sourceType.size() <= 50))
+        && (data.get('originalText', null) == null || (data.originalText is string && data.originalText.size() <= 1000000))
+        && (data.get('convertedText', null) == null || (data.convertedText is string && data.convertedText.size() <= 1000000))
         && (data.status == 'draft' || data.status == 'saved' || data.status == 'final')
-        && (data.flowStatus == null || (data.flowStatus is string && data.flowStatus.size() <= 100));
+        && (data.get('flowStatus', null) == null || (data.flowStatus is string && data.flowStatus.size() <= 100));
     }
 
     // Document storage matches ownership

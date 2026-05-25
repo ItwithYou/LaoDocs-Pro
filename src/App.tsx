@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut, getRedirectResult } from "firebase/auth";
 import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp } from "firebase/firestore";
 import { auth, db, handleFirestoreError, OperationType, loginWithGoogle } from "./firebase";
 import { UserProfile, LaoLetterDocument } from "./types";
@@ -39,6 +39,15 @@ export default function App() {
 
   // Synchronize Google Authentication events
   useEffect(() => {
+    // Check for redirect result first
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        // User is signed in via redirect, onAuthStateChanged will pick it up
+      }
+    }).catch((error) => {
+      console.error("Firebase Auth Redirect Error:", error);
+    });
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setIsLoading(true);
       if (user) {
@@ -73,6 +82,8 @@ export default function App() {
           subscriptionTier: isAdmin ? "ultra" : "free",
           role: isAdmin ? "admin" : "user",
           createdAt: new Date(),
+          profilePhoto: user.photoURL || "",
+          birthday: "",
         };
         await setDoc(userRef, {
           ...profileData,
@@ -82,11 +93,13 @@ export default function App() {
         const data = snap.data();
         profileData = {
           userId: data.userId,
-          email: data.email,
-          displayName: data.displayName,
+          email: data.email || user.email || "",
+          displayName: data.displayName || user.displayName || "Lao Business Partner",
           subscriptionTier: data.subscriptionTier || "free",
           role: data.role || "user",
-          createdAt: data.createdAt,
+          createdAt: data.createdAt || new Date(),
+          birthday: data.birthday || "",
+          profilePhoto: data.profilePhoto || user.photoURL || "",
         };
       }
 
@@ -127,12 +140,7 @@ export default function App() {
       setCurrentUser(user);
     } catch (err: any) {
       console.error("Direct Google login failure", err);
-      const msg = err.message?.toLowerCase() || "";
-      if (msg.includes('popup') || msg.includes('cross-origin') || msg.includes('opener')) {
-        alert(isLao ? "ກະລຸນາເປີດແອັບໃນໜ້າຕ່າງໃໝ່ (New Tab) ໂດຍຄຣິກປຸ່ມຢູ່ມຸມຂວາເທິງ ເພື່ອເຂົ້າສູ່ລະບົບ." : "Please open the app in a new tab using the top-right button to sign in. Popups are blocked here.");
-      } else {
-        alert(isLao ? "ເຂົ້າສູ່ລະບົບລົ້ມເຫຼວ." : "Login failed.");
-      }
+      // We rely on signInWithRedirect fallback in firebase.ts, so we don't need invasive alerts
     }
   };
 
@@ -215,6 +223,7 @@ export default function App() {
               selectedDocument={selectedDocument}
               onClearSelected={() => setSelectedDocument(null)}
               onRequireLogin={handleGoogleLoginDirect}
+              onUpgradeClick={() => setIsSubscriptionModalOpen(true)}
             />
           </section>
 

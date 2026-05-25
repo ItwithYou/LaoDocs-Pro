@@ -28,7 +28,7 @@ import mammoth from "mammoth";
 
 app.post("/api/gemini/convert", async (req, res) => {
   try {
-    const { fileBase64, mimeType, promptType, rawLaoText, documentContext } = req.body;
+    const { fileBase64, mimeType, promptType, rawLaoText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType } = req.body;
 
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: "GEMINI_API_KEY is not configured in secrets." });
@@ -37,6 +37,22 @@ app.post("/api/gemini/convert", async (req, res) => {
     let contents: any[] = [];
     let promptString = "";
     
+    let extractedReferenceText = "";
+    if (referenceFormatFileBase64 && referenceFormatFileMimeType && promptType === "generate") {
+      if (referenceFormatFileMimeType.includes("wordprocessingml.document")) {
+        const refBuffer = Buffer.from(referenceFormatFileBase64, "base64");
+        const { value: refText } = await mammoth.extractRawText({ buffer: refBuffer });
+        extractedReferenceText = refText || "";
+      } else {
+        contents.push({
+          inlineData: {
+            mimeType: referenceFormatFileMimeType,
+            data: referenceFormatFileBase64,
+          }
+        });
+      }
+    }
+
     // Convert Word documents to raw text before processing
     let processedRawText = rawLaoText || "";
     let isWordDoc = false;
@@ -71,6 +87,8 @@ The admin has defined the following standard structural template / rules for thi
 """
 ${documentContext || "Standard official Lao documentation template."}
 """
+
+${extractedReferenceText ? `The admin ALSO uploaded a reference layout document for you to strictly mimic. The extracted text flow is: \n"""\n${extractedReferenceText}\n"""\nFollow this reference structure exactly.` : ""}
 
 The user has provided the following rough draft or request:
 """
@@ -149,7 +167,13 @@ ${formatInstruction}
       throw new Error("No response text received from Gemini.");
     }
 
-    const resultData = JSON.parse(responseText.trim());
+    let cleanText = responseText.trim();
+    if (cleanText.startsWith("```json")) {
+      cleanText = cleanText.replace(/^```json\n?/, "").replace(/```\n?$/, "").trim();
+    } else if (cleanText.startsWith("```")) {
+      cleanText = cleanText.replace(/^```\n?/, "").replace(/```\n?$/, "").trim();
+    }
+    const resultData = JSON.parse(cleanText);
     return res.json(resultData);
 
   } catch (error: any) {
