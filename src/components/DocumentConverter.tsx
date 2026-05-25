@@ -331,6 +331,38 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     }
   };
 
+  const fetchBackend = async (url: string, payload: any): Promise<any> => {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("text/html")) {
+        throw new Error("HOSTINGER_STATIC_ROUTING_ERROR");
+      }
+
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        throw new Error("HOSTINGER_STATIC_ROUTING_ERROR");
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error || `API error with status ${response.status}`);
+      }
+      return data;
+    } catch (err: any) {
+      if (err.message === "HOSTINGER_STATIC_ROUTING_ERROR") {
+        throw new Error("HOSTINGER_DEPLOYMENT_ERROR");
+      }
+      throw err;
+    }
+  };
+
   const handleGenerateAction = async (draftText: string, instruction: string, referenceFileBase64?: string, referenceFileMimeType?: string) => {
     if (!userProfile && guestConversionsLeft <= 0) {
       setParsingError("You have used all 3 guest trials. Please log in or upgrade to continue.");
@@ -353,13 +385,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         payload.referenceFormatFileMimeType = referenceFileMimeType;
       }
       
-      const response = await fetch("/api/gemini/convert", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to generate document.");
+      const data = await fetchBackend("/api/gemini/convert", payload);
       
       setConvertedResult(data);
       if (!userProfile) {
@@ -396,13 +422,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
           rawLaoText: inputText,
           promptType: "font-convert",
         };
-        const response = await fetch("/api/gemini/convert", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Failed to process text conversion.");
+        const data = await fetchBackend("/api/gemini/convert", payload);
         setTextOutput(data.convertedText || "");
         if (!userProfile) {
           const newVal = guestConversionsLeft - 1;
@@ -424,13 +444,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
             mimeType: f.type,
             promptType: "ocr",
           };
-          const response = await fetch("/api/gemini/convert", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "Failed to process text conversion.");
+          const data = await fetchBackend("/api/gemini/convert", payload);
           data.title = f.name; // Use filename for title
           convertedDocs.push(data);
           if (!userProfile) {
@@ -1059,10 +1073,45 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
           </div>
 
           <div className="p-6 text-xs space-y-5">
-            {parsingError && (
-              <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-red-650 flex items-start space-x-2">
+            {parsingError && parsingError.includes("HOSTINGER_DEPLOYMENT_ERROR") ? (
+              <div className="p-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl text-slate-800 dark:text-slate-200 space-y-4 shadow-sm">
+                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span>ຂໍ້ຜິດພາດໃນການເຊື່ອມຕໍ່ Backend / API Connection Blocker</span>
+                </div>
+                
+                <p className="text-xs leading-relaxed">
+                  <strong>ສາເຫດ:</strong> ລະບົບໄດ້ຮັບໄຟລ໌ HTML ແທນທີ່ຈະເປັນ JSON. ນີ້ໝາຍຄວາມວ່າ Server Node.js (Express) ຍັງບໍ່ທັນຖືກເປີດໃຊ້ງານ ຫຼື ຕັ້ງຄ່າບໍ່ຖືກຕ້ອງໃນລະບົບ Hostinger ຂອງທ່ານ (ເຮັດໃຫ້ການຮຽກຮ້ອງ API ຖືກສົ່ງໄປຫາໜ້າ index.html ຂອງ Static app).
+                </p>
+                
+                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl space-y-2 border border-slate-200 dark:border-slate-700 text-[11px]">
+                  <p className="font-bold text-slate-900 dark:text-slate-100 mb-1">🛠️ ວິທີແກ້ໄຂເທື່ອລະຂັ້ນຕອນ (How to fix on Hostinger):</p>
+                  <ol className="list-decimal pl-4 space-y-2 leading-relaxed">
+                    <li>
+                      <strong>ເປີດໃຊ້ງານ Node.js App:</strong> ເຂົ້າໄປທີ່ <strong>Hostinger hPanel</strong> &gt; ຄົ້ນຫາ <strong>"Node.js"</strong> &gt; ເລືອກສ້າງ Node.js Application ໃໝ່.
+                    </li>
+                    <li>
+                      <strong>ກຳນົດໄຟລ໌ເລີ່ມຕົ້ນ (Entry point):</strong> ກຳນົດ Entry File ໃຫ້ຊີ້ໄປຫາ <code>dist/server.cjs</code> (ຫຼື <code>server.ts</code> ຖ້າທ່ານໃຊ້ <code>tsx</code>) ແລະ ກວດເບິ່ງໃຫ້ແນ່ໃຈວ່າ port ຖືກຕ້ອງ.
+                    </li>
+                    <li>
+                      <strong>ເພີ່ມ Environment Variable / key ລັບ:</strong> ໃນ Dashboard ຂອງ Hostinger, ຕັ້ງຄ່າຕົວປ່ຽນສະພາບແວດລ້ອມ (Environment Variable) ເພື່ອໃຫ້ Gemini ສາມາດເຮັດວຽກໄດ້:
+                      <div className="mt-1 bg-slate-100 dark:bg-slate-900 p-1 px-2 rounded font-mono text-[10px] select-all inline-block text-slate-700 dark:text-slate-300">
+                        GEMINI_API_KEY=YOUR_ACTUAL_GEMINI_KEY
+                      </div>
+                    </li>
+                    <li>
+                      <strong>ສ້າງ Build ຫຼ້າສຸດ:</strong> ໃຫ້ແນ່ໃຈວ່າໄດ້ອັບໂຫຼດທັງໝົດໂຟເດີ <code>dist</code> (ທີ່ໄດ້ມາຈາກການ <code>npm run build</code>) ໄປຍັງ server.
+                    </li>
+                    <li>
+                      <strong>ກວດສອບ Google Sign-In:</strong> ຢ່າລືມເພີ່ມ <code>laodocs.com</code> ເຂົ້າໃນ <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized Domains</strong> (ແລະ <strong>Google Cloud Credentials OAuth</strong> ດ້ວຍ) ເພື່ອປ້ອງກັນປ໊ອບອັບຫາຍໄປ!
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            ) : parsingError && (
+              <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-650 flex items-start space-x-2">
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{parsingError}</span>
+                <span className="leading-relaxed whitespace-pre-line">{parsingError}</span>
               </div>
             )}
 
