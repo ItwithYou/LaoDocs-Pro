@@ -22,18 +22,26 @@ export default function AuthModal({ onClose, onLoginSuccess }: AuthModalProps) {
       onClose();
     } catch (err: any) {
       console.error("Auth modal Google login failure", err);
+      const code = err.code || "";
       const msg = err.message?.toLowerCase() || "";
-      if (msg.includes('popup') || msg.includes('cross-origin') || msg.includes('opener')) {
+      
+      if (code === "auth/unauthorized-domain" || msg.includes("unauthorized-domain") || msg.includes("unauthorized domain")) {
         setErrorMsg(
           isLao
-            ? "ກະລຸນາເປີດແອັບໃນໜ້າຕ່າງໃໝ່ (New Tab) ໂດຍຄຣິກປຸ່ມຢູ່ມຸມຂວາເທິງ ເພື່ອເຂົ້າສູ່ລະບົບ."
-            : "Please open the app in a new tab using the top-right button to sign in. Popups are blocked here."
+            ? "ຂໍ້ຜິດພາດ: ໂດເມນບໍ່ທັນໄດ້ຮັບອະນຸຍາດໃນ Firebase! ວິທີແກ້ໄຂ: ເຂົ້າໄປທີ່ Firebase Console > Authentication > Settings > Authorized domains ແລ້ວເພີ່ມ 'laodocs.com' ແລະ 'www.laodocs.com' ເຂົ້າໃນລາຍການອະນຸມັດ."
+            : "Firebase Error: Unauthorized domain! Fix: Go to Firebase Console > Authentication > Settings > Authorized domains and add 'laodocs.com' and 'www.laodocs.com' to the authorized list."
+        );
+      } else if (msg.includes('popup') || msg.includes('cross-origin') || msg.includes('opener') || msg.includes('closed-by-user')) {
+        setErrorMsg(
+          isLao
+            ? "ປອບອັບຖືກບລັອກ ຫຼື ໂດເມນ laodocs.com ຍັງບໍ່ທັນປົດລັອກໃນ Firebase Console. ກະລຸນາກວດສອບ 'Authorized Domains'."
+            : "Popup was blocked, closed, or domain is pending Firebase authorization. Ensure 'laodocs.com' is allowed under Firebase Console > Authentication > Settings > Authorized domains."
         );
       } else {
         setErrorMsg(
           isLao
-            ? "ເຂົ້າສູ່ລະບົບລົ້ມເຫຼວ. ລອງເປີດແອັບໃນແຖບໃໝ່ (ປຸ່ມມຸມຂວາເທິງ). ຖ້າຍັງບັນຫາເກີດຂຶ້ນ, ອາດຈະຕ້ອງເພີ່ມໂດເມນເຂົ້າໃນ Firebase Authorized Domains."
-            : "Login failed. Try opening the app in a new tab (top right). If it still fails, the app URL might need to be added to Firebase Authorized Domains."
+            ? "ເຂົ້າສູ່ລະບົບລົ້ມເຫຼວ. ລອງເປີດແອັບໃນແຖບໃໝ່ (ປຸ່ມມຸມຂວາເທິງ). ຖ້າຍັງບັນຫາເກີດຂຶ້ນ, ກະລຸນາເພີ່ມ 'laodocs.com' ເຂົ້າໃນ Firebase Authorized Domains."
+            : "Login failed. Try opening in a new tab. If issues persist, please register 'laodocs.com' within Firebase Console > Authentication > Settings > Authorized Domains."
         );
       }
     } finally {

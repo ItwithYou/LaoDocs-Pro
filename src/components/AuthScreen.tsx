@@ -22,7 +22,28 @@ export default function AuthScreen({ onLoginSuccess, onGuestLogin }: AuthScreenP
       onLoginSuccess(user);
     } catch (err: any) {
       console.error("Auth Screen Google login failure", err);
-      setErrorMsg("ການເຂົ້າສູ່ລະບົບລົ້ມເຫຼວ. ກະລຸນາລອງໃໝ່ອີກຄັ້ງ. (Login failed. Please try again.)");
+      const code = err.code || "";
+      const msg = err.message?.toLowerCase() || "";
+      
+      if (code === "auth/unauthorized-domain" || msg.includes("unauthorized-domain") || msg.includes("unauthorized domain")) {
+        setErrorMsg(
+          isLao
+            ? "ຂໍ້ຜິດພາດ: ໂດເມນນີ້ຍັງບໍ່ທັນໄດ້ຮັບອະນຸຍາດໃນ Firebase! ວິທີແກ້ໄຂ: ເຂົ້າໄປທີ່ Firebase Console > Authentication > Settings > Authorized domains ແລ້ວເພີ່ມ 'laodocs.com' ແລະ 'www.laodocs.com' ເຂົ້າໃນລາຍການອະນຸມັດ."
+            : "Firebase Error: Unauthorized domain! Fix: Go to Firebase Console > Authentication > Settings > Authorized domains and add 'laodocs.com' and 'www.laodocs.com' to your allowed list."
+        );
+      } else if (code === "auth/popup-blocked" || msg.includes("popup-blocked") || msg.includes("popup") || msg.includes("cross-origin") || msg.includes("closed-by-user")) {
+        setErrorMsg(
+          isLao
+            ? "ປອບອັບກະລຸນາເປີດອີກຄັ້ງ ຫຼື ໂດເມນບໍ່ທັນໄດ້ຮັບອະນຸມັດ. ກວດສອບຄວາມຖືກຕ້ອງຂອງ 'Authorized Domains' ໃນ Firebase Console (ຕ້ອງເພີ່ມ laodocs.com & www.laodocs.com)."
+            : "Authentication popup was blocked, closed, or domain is unauthorized. Please verify you added 'laodocs.com' and 'www.laodocs.com' to Firebase Console > Authentication > Authorized Domains."
+        );
+      } else {
+        setErrorMsg(
+          isLao
+            ? `ເຂົ້າສູ່ລະບົບລົ້ມເຫຼວ: ${err.message || err}. ຖ້າໃຊ້ໂດເມນ laodocs.com, ຕ້ອງເພີ່ມມັນເຂົ້າໃນ Firebase Authorized Domains.`
+            : `Login failed: ${err.message || err}. If using custom domain laodocs.com, make sure it is added to Firebase Console > Authorized Domains.`
+        );
+      }
     } finally {
       setIsLoggingIn(false);
     }

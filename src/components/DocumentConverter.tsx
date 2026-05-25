@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { UserProfile, LaoLetterDocument, SUBSCRIPTION_PLANS, DocumentTemplate, AIDocumentType } from "../types";
 import { db, handleFirestoreError, OperationType, safeGetDocs, safeSetDoc } from "../firebase";
 import { doc, serverTimestamp, collection, query, orderBy } from "firebase/firestore";
-import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock, Printer, Edit, Save, Presentation } from "lucide-react";
+import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock, Printer, Edit, Save, Presentation, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, ImagePlus, Trash2, Maximize2, Minimize2 } from "lucide-react";
 
 interface DocumentConverterProps {
   userProfile: UserProfile | null;
@@ -62,6 +62,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
   // Document Editing states
   const [isEditing, setIsEditing] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<HTMLImageElement | null>(null);
   const [editedHtml, setEditedHtml] = useState("");
   const [editedTitle, setEditedTitle] = useState("");
   const [editedSender, setEditedSender] = useState("");
@@ -74,6 +75,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
   // Synchronize editing inputs with selected document
   useEffect(() => {
+    setSelectedImage(null); // Reset selected image on document change
     if (activeDocument) {
       setEditedHtml(activeDocument.convertedText || "");
       setEditedTitle(activeDocument.title || "");
@@ -94,8 +96,118 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     }
   }, [convertedResult, selectedDocument]);
 
+  // Handle active selection outline styling for rich image interaction
+  useEffect(() => {
+    if (editorRef.current) {
+      const imgs = editorRef.current.querySelectorAll("img");
+      imgs.forEach((img) => {
+        (img as HTMLImageElement).style.outline = "";
+        (img as HTMLImageElement).style.outlineOffset = "";
+      });
+    }
+    if (selectedImage) {
+      selectedImage.style.outline = "3px solid #6366f1";
+      selectedImage.style.outlineOffset = "3px";
+    }
+  }, [selectedImage]);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const insertImageRef = useRef<HTMLInputElement>(null);
+
+  const applyStyle = (command: string, value: string = "") => {
+    // Focus the editor to ensure styling is applied inside it
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+    if (editorRef.current) {
+      setEditedHtml(editorRef.current.innerHTML);
+    }
+  };
+
+  const adjustImageStyle = (styleName: string, value: string = "") => {
+    if (!selectedImage) return;
+
+    if (styleName === "float") {
+      if (value === "left") {
+        selectedImage.style.float = "left";
+        selectedImage.style.display = "inline-block";
+        selectedImage.style.margin = "10px 20px 10px 0";
+      } else if (value === "right") {
+        selectedImage.style.float = "right";
+        selectedImage.style.display = "inline-block";
+        selectedImage.style.margin = "10px 0 10px 20px";
+      } else if (value === "none") {
+        selectedImage.style.float = "none";
+        selectedImage.style.display = "block";
+        selectedImage.style.margin = "15px auto";
+      } else if (value === "inline") {
+        selectedImage.style.float = "none";
+        selectedImage.style.display = "inline-block";
+        selectedImage.style.margin = "10px";
+      }
+    } else if (styleName === "size") {
+      const currentWidthStr = selectedImage.style.maxWidth || selectedImage.style.width || "50%";
+      let currentWidthNum = parseInt(currentWidthStr) || 50;
+      if (value === "increase") {
+        currentWidthNum = Math.min(100, currentWidthNum + 10);
+      } else if (value === "decrease") {
+        currentWidthNum = Math.max(10, currentWidthNum - 10);
+      }
+      selectedImage.style.maxWidth = `${currentWidthNum}%`;
+      selectedImage.style.width = ""; // Reset simple width to favor responsive maxWidth bounds
+    } else if (styleName === "delete") {
+      selectedImage.remove();
+      setSelectedImage(null);
+    }
+
+    if (editorRef.current) {
+      setEditedHtml(editorRef.current.innerHTML);
+    }
+  };
+
+  const handleInsertImage = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      editorRef.current?.focus();
+      
+      const imgHtml = `<img src="${base64}" class="inserted-document-photo rounded-xl shadow-md border border-slate-200 dark:border-slate-800 transition-all duration-200" style="max-width: 50%; max-height: 350px; object-fit: contain; margin: 12px; display: inline-block; cursor: move; vertical-align: middle; float: none;" alt="inserted asset" />&nbsp;`;
+      
+      let inserted = false;
+      if (window.getSelection) {
+        const sel = window.getSelection();
+        if (sel && sel.getRangeAt && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          if (editorRef.current?.contains(range.startContainer)) {
+            range.deleteContents();
+            const el = document.createElement("div");
+            el.innerHTML = imgHtml;
+            const frag = document.createDocumentFragment();
+            let node;
+            while ((node = el.firstChild)) {
+              frag.appendChild(node);
+            }
+            range.insertNode(frag);
+            inserted = true;
+          }
+        }
+      }
+      
+      if (!inserted && editorRef.current) {
+        editorRef.current.innerHTML += imgHtml;
+      }
+
+      if (editorRef.current) {
+        setEditedHtml(editorRef.current.innerHTML);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  };
 
   // Determine limits
   const currentPlan = userProfile ? SUBSCRIPTION_PLANS.find(p => p.id === userProfile.subscriptionTier) : null;
@@ -1472,10 +1584,199 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
               {/* Document Body Wrapper - Scrollable Editor Pane */}
               <div className="p-4 sm:p-6 lg:p-8 overflow-y-auto bg-slate-200/50 dark:bg-slate-900 flex-1 flex flex-col justify-start items-center">
+                
+                {/* Formatter Warning info banner */}
                 {isEditing && (
-                  <div className="w-full max-w-[850px] mb-4 p-3.5 bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 text-xs rounded-xl flex items-center gap-2.5 shadow-sm transform transition duration-300">
-                    <Edit className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-bounce shrink-0" />
+                  <div className="w-full max-w-[850px] mb-3 p-3 bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 text-[10px] rounded-xl flex items-center gap-2 shadow-xxs transform transition duration-300 select-none">
+                    <Edit className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
                     <span><strong>ໂໝດແກ້ໄຂເປີດຢູ່:</strong> ທ່ານສາມາດຄລິກໃສ່ຂໍ້ຄວາມພາຍໃນເຈ້ຍ A4 ດ້ານລຸ່ມນີ້ເພື່ອປ່ຽນແປງ ຫຼື ພິມຂໍ້ຄວາມໃຫມ່ໄດ້ທັນທີ. / <strong>Edit mode active:</strong> Click anywhere inside the text document on the sheet below to edit or reformat.</span>
+                  </div>
+                )}
+
+                {/* Formatting Rich-Text Toolbar when isEditing is True */}
+                {isEditing && (
+                  <div className="w-full max-w-[850px] mb-3 bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 rounded-xl p-2 shadow-xs flex flex-wrap items-center gap-2 select-none">
+                    {/* Basic Styling Group */}
+                    <div className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-800 pr-2">
+                      <button
+                        onClick={() => applyStyle("bold")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Bold / ຕົວໜາ"
+                      >
+                        <Bold className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => applyStyle("italic")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Italic / ຕົວອຽງ"
+                      >
+                        <Italic className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => applyStyle("underline")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Underline / ຂີດກ້ອງ"
+                      >
+                        <Underline className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Alignment Group */}
+                    <div className="flex items-center gap-1 border-r border-slate-200 dark:border-slate-800 pr-2">
+                      <button
+                        onClick={() => applyStyle("justifyLeft")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Align Left / ຈັດຊ້າຍ"
+                      >
+                        <AlignLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => applyStyle("justifyCenter")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Align Center / ຈັດກາງ"
+                      >
+                        <AlignCenter className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => applyStyle("justifyRight")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Align Right / ຈັດຂວາ"
+                      >
+                        <AlignRight className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => applyStyle("justifyFull")}
+                        className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded text-slate-700 dark:text-slate-200 cursor-pointer transition active:scale-95"
+                        title="Justify / ຈັດສະເໝີຂ້າງ"
+                      >
+                        <AlignJustify className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Color selection dot group */}
+                    <div className="flex items-center gap-1.5 border-r border-slate-200 dark:border-slate-800 pr-2">
+                      <span className="text-[9px] text-slate-400 font-bold mr-1 uppercase">Color:</span>
+                      <button
+                        onClick={() => applyStyle("foreColor", "#0f172a")}
+                        className="w-4 h-4 rounded-full bg-slate-900 border border-white dark:border-slate-700 hover:scale-125 transition shadow-xxs cursor-pointer"
+                        title="Black / ດຳ"
+                      />
+                      <button
+                        onClick={() => applyStyle("foreColor", "#dc2626")}
+                        className="w-4 h-4 rounded-full bg-red-600 border border-white dark:border-slate-700 hover:scale-125 transition shadow-xxs cursor-pointer"
+                        title="Red / ແດງ"
+                      />
+                      <button
+                        onClick={() => applyStyle("foreColor", "#2563eb")}
+                        className="w-4 h-4 rounded-full bg-blue-600 border border-white dark:border-slate-700 hover:scale-125 transition shadow-xxs cursor-pointer"
+                        title="Blue / ຟ້າ"
+                      />
+                      <button
+                        onClick={() => applyStyle("foreColor", "#059669")}
+                        className="w-4 h-4 rounded-full bg-emerald-600 border border-white dark:border-slate-700 hover:scale-125 transition shadow-xxs cursor-pointer"
+                        title="Green / ຂຽວ"
+                      />
+                      <button
+                        onClick={() => applyStyle("foreColor", "#d97706")}
+                        className="w-4 h-4 rounded-full bg-amber-600 border border-white dark:border-slate-700 hover:scale-125 transition shadow-xxs cursor-pointer"
+                        title="Amber / ເຫຼືອງ"
+                      />
+                    </div>
+
+                    {/* Insertion of Images and Photos */}
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="file"
+                        ref={insertImageRef}
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleInsertImage}
+                      />
+                      <button
+                        onClick={() => insertImageRef.current?.click()}
+                        className="flex items-center gap-1 px-2.5 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 text-indigo-600 dark:text-indigo-400 rounded-lg text-xs font-bold transition cursor-pointer active:scale-97 border border-indigo-150 dark:border-indigo-950"
+                        title="Insert Photo / ວາງຮູບພາບ"
+                      >
+                        <ImagePlus className="w-3.5 h-3.5" />
+                        <span>Insert Photo / ຮູບພາບ</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Dynamic Photo Control Widget when an Image is Selected in Edit Mode */}
+                {isEditing && selectedImage && (
+                  <div className="w-full max-w-[850px] mb-3 bg-indigo-50 border border-indigo-200 text-indigo-900 dark:bg-indigo-950/60 dark:border-indigo-850 dark:text-indigo-200 rounded-xl p-3 shadow-xs flex flex-wrap items-center justify-between gap-3 animate-fade-in select-none">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 animate-ping"></span>
+                      <span className="text-xs font-bold font-mono">PHOTO CONTROLS / ປັບແຕ່ງຮູບພາບ:</span>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      {/* Floating alignment options */}
+                      <span className="text-[10px] text-slate-400 font-bold uppercase mr-1">Position:</span>
+                      <button 
+                        onClick={() => adjustImageStyle("float", "left")}
+                        className="px-2 py-1 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer"
+                        title="Float Left (Text wraps on right) / ຕິດຊ້າຍ"
+                      >
+                        Float Left
+                      </button>
+                      <button 
+                        onClick={() => adjustImageStyle("float", "right")}
+                        className="px-2 py-1 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer"
+                        title="Float Right (Text wraps on left) / ຕິດຂວາ"
+                      >
+                        Float Right
+                      </button>
+                      <button 
+                        onClick={() => adjustImageStyle("float", "none")}
+                        className="px-2 py-1 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer"
+                        title="Centered Block (Text breaks to next line) / ຈັດກາງ"
+                      >
+                        Center
+                      </button>
+                      <button 
+                        onClick={() => adjustImageStyle("float", "inline")}
+                        className="px-2 py-1 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer"
+                        title="Continuous Inline Flow / ແຖວດຽວ"
+                      >
+                        Inline
+                      </button>
+
+                      <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1"></div>
+
+                      {/* Resizing options */}
+                      <span className="text-[10px] text-slate-400 font-bold uppercase mr-1 font-mono">Size:</span>
+                      <button 
+                        onClick={() => adjustImageStyle("size", "increase")}
+                        className="p-1 px-2.5 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer flex items-center gap-1"
+                        title="Increase Photo Width / ຂະຫຍາຍໃຫຍ່ຂຶ້ນ"
+                      >
+                        <Maximize2 className="w-3 h-3 text-emerald-500" />
+                        <span>+10%</span>
+                      </button>
+                      <button 
+                        onClick={() => adjustImageStyle("size", "decrease")}
+                        className="p-1 px-2.5 text-xs font-bold bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-705 border border-slate-200 dark:border-slate-700 rounded transition cursor-pointer flex items-center gap-1"
+                        title="Decrease Photo Width / ຫຍໍ້ຂະໜາດລົງ"
+                      >
+                        <Minimize2 className="w-3 h-3 text-amber-500" />
+                        <span>-10%</span>
+                      </button>
+
+                      <div className="w-px h-4 bg-slate-250 dark:bg-slate-750 mx-1"></div>
+
+                      {/* Delete option */}
+                      <button 
+                        onClick={() => adjustImageStyle("delete")}
+                        className="p-1 px-2.5 bg-red-50 dark:bg-red-950/20 hover:bg-red-100 dark:hover:bg-red-950/40 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded transition cursor-pointer flex items-center gap-1 text-xs font-bold"
+                        title="Remove Photo from Document / ລົບຮູບພາບ"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Delete</span>
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1489,10 +1790,69 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                   </div>
 
                   <div 
+                    ref={editorRef}
                     contentEditable={isEditing}
                     suppressContentEditableWarning={true}
+                    onInput={(e) => {
+                      setEditedHtml(e.currentTarget.innerHTML);
+                    }}
                     onBlur={(e) => {
                       setEditedHtml(e.currentTarget.innerHTML);
+                    }}
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (target.tagName === "IMG") {
+                        setSelectedImage(target as HTMLImageElement);
+                      } else {
+                        setSelectedImage(null);
+                      }
+                    }}
+                    onPaste={(e) => {
+                      const items = e.clipboardData?.items;
+                      if (items) {
+                        for (let i = 0; i < items.length; i++) {
+                          if (items[i].type.indexOf("image") !== -1) {
+                            const file = items[i].getAsFile();
+                            if (file) {
+                              e.preventDefault();
+                              const reader = new FileReader();
+                              reader.onload = (event) => {
+                                const base64 = event.target?.result as string;
+                                const imgHtml = `<img src="${base64}" class="inserted-document-photo rounded-xl shadow-md border border-slate-200 dark:border-slate-800 transition-all duration-200" style="max-width: 50%; max-height: 350px; object-fit: contain; margin: 12px; display: inline-block; cursor: move; vertical-align: middle; float: none;" alt="inserted asset" />&nbsp;`;
+                                
+                                let inserted = false;
+                                if (window.getSelection) {
+                                  const sel = window.getSelection();
+                                  if (sel && sel.getRangeAt && sel.rangeCount) {
+                                    const range = sel.getRangeAt(0);
+                                    if (editorRef.current?.contains(range.startContainer)) {
+                                      range.deleteContents();
+                                      const el = document.createElement("div");
+                                      el.innerHTML = imgHtml;
+                                      const frag = document.createDocumentFragment();
+                                      let node;
+                                      while ((node = el.firstChild)) {
+                                        frag.appendChild(node);
+                                      }
+                                      range.insertNode(frag);
+                                      inserted = true;
+                                    }
+                                  }
+                                }
+                                
+                                if (!inserted && editorRef.current) {
+                                  editorRef.current.innerHTML += imgHtml;
+                                }
+
+                                if (editorRef.current) {
+                                  setEditedHtml(editorRef.current.innerHTML);
+                                }
+                              };
+                              reader.readAsDataURL(file);
+                            }
+                          }
+                        }
+                      }
                     }}
                     dangerouslySetInnerHTML={{ __html: editedHtml || activeDocument.convertedText || "" }}
                     className={`pt-4 text-[13px] sm:text-sm font-lao leading-loose outline-none focus:outline-none w-full min-h-[960px] ${
