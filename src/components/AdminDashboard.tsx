@@ -17,7 +17,7 @@ export default function AdminDashboard({ onClose, inline = false }: AdminDashboa
   const [aiTypes, setAiTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing'>('requests');
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat'>('requests');
   
   const [bankQrUrlPro, setBankQrUrlPro] = useState("");
   const [bankQrUrlUltra, setBankQrUrlUltra] = useState("");
@@ -910,6 +910,7 @@ ${docItem.originalText || ''}
           
           <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
             <button onClick={() => setActiveTab('requests')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'requests' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Pending Payment Slips</button>
+            <button onClick={() => setActiveTab('chat')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'chat' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Customer Chat</button>
             <button onClick={() => setActiveTab('tracking')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'tracking' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>Sub Expirations Tracker</button>
             <button onClick={() => setActiveTab('billing')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'billing' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>API Keys & Spend</button>
             <button onClick={() => setActiveTab('users')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'users' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500 hover:text-slate-700'}`}>Registered Users</button>
@@ -1055,6 +1056,10 @@ ${docItem.originalText || ''}
                    {templates.length === 0 && <p className="text-slate-500 text-sm italic">No templates uploaded yet.</p>}
                  </div>
                </div>
+            </div>
+          ) : activeTab === 'chat' ? (
+            <div className="bg-slate-50 dark:bg-slate-950/40 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden h-[600px] animate-in fade-in slide-in-from-bottom-2">
+              <SupportChat userProfile={null} onLoginClick={() => {}} inline={true} defaultTab="admin-portal" />
             </div>
           ) : activeTab === 'requests' ? (
             <div className="space-y-4">

@@ -32,6 +32,36 @@
         "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
       },
       "required": ["documentId", "ownerId", "title", "status", "createdAt", "updatedAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Support chat lobby for user and admin",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string", "description": "Chat ID (matches user UID)" },
+        "userId": { "type": "string", "description": "User UID" },
+        "userEmail": { "type": "string", "description": "User email address" },
+        "userName": { "type": "string", "description": "User display name" },
+        "lastMessage": { "type": "string", "description": "Content of last message in chat" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last updated timestamp" },
+        "unreadByAdmin": { "type": "boolean", "description": "Whether there are unread messages for admin" },
+        "unreadByUser": { "type": "boolean", "description": "Whether there are unread messages for user" }
+      },
+      "required": ["chatId", "userId", "userEmail", "userName", "updatedAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Individual message in a support chat",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "description": "Message document ID" },
+        "senderId": { "type": "string", "description": "UID of the message sender" },
+        "senderName": { "type": "string", "description": "Display name of the sender" },
+        "text": { "type": "string", "description": "Message body" },
+        "screenshot": { "type": "string", "description": "Optional compressed screenshot base64 image data" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when sent" }
+      },
+      "required": ["messageId", "senderId", "senderName", "createdAt"]
     }
   },
   "firestore": {
@@ -42,6 +72,14 @@
     "/documents/{documentId}": {
       "schema": "Document",
       "description": "Formal documents and letters"
+    },
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Chat details between user and admin"
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages inside a support chat"
     }
   }
 }

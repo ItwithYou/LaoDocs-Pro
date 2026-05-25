@@ -293,11 +293,11 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     }
 
     if (!userProfile && selectedFiles.length > maxFiles) {
-        setParsingError(`ແຂກ (Guest) ສາມາດອັບໂຫຼດໄດ້ເທື່ອລະ 1 ຟາຍ. / Guests can only upload 1 file at a time.`);
+        setParsingError(`ແຂກ (Guest) ສາມາດອັບໂຫຼດໄດ້ເທື່ອລະ 1 ຟາຍ. ກະລຸນາອັບເກຣດແພັກເກັດເພື່ອອັບໂຫຼດໄດ້ຫຼາຍໄຟລ໌ພ້ອມກັນ! / Guests can only upload 1 file at a time. Please upgrade to upload multiple files.`);
         return;
     }
     if (userProfile?.subscriptionTier === "free" && selectedFiles.length > maxFiles) {
-        setParsingError(`ສໍາລັບແພັກເກັດຟຣີ ສາມາດອັບໂຫຼດໄດ້ເທື່ອລະ 1 ຟາຍ / Free tier can only upload 1 file at a time.`);
+        setParsingError(`ສໍາລັບແພັກເກັດຟຣີ ສາມາດອັບໂຫຼດໄດ້ເທື່ອລະ 1 ຟາຍ. ກະລຸນາອັບເກຣດແພັກເກັດເພື່ອອັບໂຫຼດໄດ້ຫຼາຍໄຟລ໌ພ້ອມກັນ! / Free tier can only upload 1 file at a time. Please upgrade to upload multiple files.`);
         return;
     }
 
@@ -307,7 +307,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
     for (let f of newFiles) {
       if (f.size > maxSizeMB * 1024 * 1024) {
-        setParsingError(`ຟາຍ ${f.name} ມີຂະໜາດໃຫຍ່ເກີນໄປ. ຂີດຈຳກັດແມ່ນ ${maxSizeMB}MB / File ${f.name} is too large. ${maxSizeMB}MB limit.`);
+        setParsingError(`ຟາຍ ${f.name} ມີຂະໜາດໃຫຍ່ເກີນໄປ. ຂີດຈຳກັດຂອງແພັກເກັດປັດຈຸບັນແມ່ນ ${maxSizeMB}MB. ກະລຸນາອັບເກຣດແພັກເກັດເພື່ອອັບໂຫຼດໄຟລ໌ໄດ້ສູງສຸດຮອດ 100MB! / File ${f.name} is too large. Current limit is ${maxSizeMB}MB. Please upgrade your plan to process files up to 100MB!`);
         return;
       }
     }
@@ -440,10 +440,8 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     const isFreeUser = !userProfile || userProfile.subscriptionTier === "free";
 
     if (isFreeUser && (promptTypeArg === "format-original" || promptTypeArg === "ocr")) {
-      const toolLabel = promptTypeArg === "format-original" ? "Format Original Language" : "Translate & Format to Lao";
-      const toolLabelLao = promptTypeArg === "format-original" ? "ຈັດຮູບແບບພາສາເດີມ" : "ແປເປັນລາວດ້ວຍ AI";
       if (getDailyToolUsage(promptTypeArg) >= 1) {
-        setParsingError(`ຂໍອະໄພ, ເຄື່ອງມື "${toolLabelLao}" ສາມາດນຳໃຊ້ໄດ້ 1 ຄັ້ງຕໍ່ມື້ສຳລັບທົດລອງເວີຊັນຟຣີ. ກະລຸນາອັບເກຣດແພັກເກດຂອງທ່ານເພື່ອປົດລ໋ອກການນຳໃຊ້ແບບບໍ່ຈຳກັດ! / You have reached the daily limit of 1 conversion per day for "${toolLabel}" on the free version. Please upgrade to Pro or Ultra for unlimited access.`);
+        setParsingError("ຂໍອະໄພ, ເກີນຂີດຈຳກັດຂອງເວີຊັນຟຣີ ກະລຸນາອັບເກຣດແພັກເກດ / Over the free limit, please upgrade.");
         if (onUpgradeClick) {
           onUpgradeClick();
         }
@@ -1137,6 +1135,21 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                       ? "ເກີດບັນຫາໃນການເຊື່ອມຕໍ່ (connection problem)"
                       : parsingError}
                   </span>
+                  {(parsingError.toLowerCase().includes("upgrade") || 
+                    parsingError.toLowerCase().includes("limit") || 
+                    parsingError.includes("ອັບເກຣດ") || 
+                    parsingError.includes("ເກີນ") || 
+                    parsingError.includes("ຈຳກັດ")) && onUpgradeClick && (
+                    <div className="mt-2 text-left">
+                      <button
+                        onClick={onUpgradeClick}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-650 hover:bg-red-600 text-white rounded-xl text-[10px] font-bold transition-all hover:scale-102 cursor-pointer select-none"
+                      >
+                        <Sparkles className="w-3 h-3 animate-pulse" />
+                        <span>ອັບເກຣດເວີຊັນ / Upgrade Now</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1462,9 +1475,13 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                           <span className="text-xs font-bold text-slate-805 dark:text-white leading-tight">
                             ຈັດຮູບແບບພາສາເດີມ
                           </span>
-                          {isFreeUser && (
+                          {isFreeUser ? (
                             <span className="ml-auto text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold">
-                              {getDailyToolUsage("format-original") >= 1 ? "1/1 ໝົດ" : "0/1 ວ່າງ"}
+                              {getDailyToolUsage("format-original") >= 1 ? "1/1" : "0/1"}
+                            </span>
+                          ) : (
+                            <span className="ml-auto text-[8px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-sans font-bold">
+                              ບໍ່ຈຳກັດ / PRO
                             </span>
                           )}
                         </div>
@@ -1472,11 +1489,15 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                           Format Original Language
                         </p>
                         <span className="text-[9px] text-slate-400 leading-tight">
-                          ຈັດຮູບແບບເອກະສານທາງການ ໂດຍຮັກສາພາສາຕົ້ນສະບັບເດີມ ປັບຕົວໜັງສືໃຫ້ງາມ
+                          ຈັດຮູບແບບεອກະສານທາງການ ໂດຍຮັກສາພາສາຕົ້ນສະບັບເດີມ ປັບຕົວໜັງສືໃຫ້ງາມ
                         </span>
-                        {isFreeUser && (
+                        {isFreeUser ? (
                           <span className="mt-1.5 text-[8.5px] text-amber-650 dark:text-amber-400 font-bold">
                             * ເວີຊັນຟຣີ: ​ຈຳ​ກັດ 1 ຄັ້ງ/ມື້
+                          </span>
+                        ) : (
+                          <span className="mt-1.5 text-[8.5px] text-emerald-600 dark:text-emerald-400 font-bold">
+                            ✓ ປົດລັອກແລ້ວ: ບໍ່ຈຳກັດການນຳໃຊ້
                           </span>
                         )}
                       </button>
@@ -1497,9 +1518,13 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                           <span className="text-xs font-bold text-indigo-900 dark:text-indigo-400 leading-tight">
                             ແປເປັນລາວດ້ວຍ AI
                           </span>
-                          {isFreeUser && (
+                          {isFreeUser ? (
                             <span className="ml-auto mr-12 text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold">
-                              {getDailyToolUsage("ocr") >= 1 ? "1/1 ໝົດ" : "0/1 ວ່າງ"}
+                              {getDailyToolUsage("ocr") >= 1 ? "1/1" : "0/1"}
+                            </span>
+                          ) : (
+                            <span className="ml-auto mr-12 text-[8px] bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md font-sans font-bold">
+                              ບໍ່ຈຳກັດ / PRO
                             </span>
                           )}
                         </div>
@@ -1509,9 +1534,13 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                         <span className="text-[9px] text-indigo-600/80 dark:text-indigo-400/80 leading-tight">
                           ແປທຸກພາສາ ແລະ ຈັດຮູບແບບອອກມາເປັນຮ່າງເອກະສານທາງການລາວທີ່ສົມບູນ
                         </span>
-                        {isFreeUser && (
+                        {isFreeUser ? (
                           <span className="mt-1.5 text-[8.5px] text-amber-650 dark:text-indigo-400 font-bold">
                             * ເວີຊັນຟຣີ: ​ຈຳ​ກັດ 1 ຄັ້ງ/ມື້
+                          </span>
+                        ) : (
+                          <span className="mt-1.5 text-[8.5px] text-emerald-600 dark:text-emerald-400 font-bold">
+                            ✓ ປົດລັອກແລ້ວ: ບໍ່ຈຳກັດການນຳໃຊ້
                           </span>
                         )}
                       </button>
@@ -1550,13 +1579,23 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
               <div className="w-px h-5 bg-slate-250 dark:bg-slate-700 mx-1"></div>
 
               <button
-                onClick={() => setIsEditing(!isEditing)}
+                onClick={() => {
+                  const isUltraUser = userProfile?.subscriptionTier === "ultra";
+                  if (!isUltraUser) {
+                    setParsingError("ຂໍອະໄພ, ການແກ້ໄຂເອກະສານແມ່ນສະເພາະເວີຊັນ ULTRA ເທົ່ານັ້ນ. ກະລຸນາອັບເກຣດແພັກເກດຂອງທ່ານ! / Document editing is exclusive to ULTRA version. Please upgrade your plan.");
+                    if (onUpgradeClick) {
+                      onUpgradeClick();
+                    }
+                    return;
+                  }
+                  setIsEditing(!isEditing);
+                }}
                 className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs whitespace-nowrap cursor-pointer hover:scale-102 ${
                   isEditing 
                     ? "bg-indigo-650 text-white hover:bg-indigo-700 border border-indigo-600 dark:bg-indigo-800 dark:border-indigo-750" 
                     : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 hover:bg-slate-100 dark:hover:bg-slate-700"
                 }`}
-                title={isEditing ? "Exit Edit Mode and View Final Draft" : "Turn on Edit Mode to Modify Fields & Text Directly"}
+                title={isEditing ? "Exit Edit Mode and View Final Draft" : "Turn on Edit Mode to Modify Fields & Text Directly - ULTRA Only"}
               >
                 {isEditing ? (
                   <>
@@ -1567,6 +1606,11 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                   <>
                     <Edit className="w-3.5 h-3.5 text-indigo-500" />
                     <span>Edit</span>
+                    {userProfile?.subscriptionTier !== "ultra" && (
+                      <span className="text-[8px] bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 px-1 py-0.2 rounded font-extrabold uppercase font-mono ml-1">
+                        Ultra
+                      </span>
+                    )}
                   </>
                 )}
               </button>
@@ -1601,12 +1645,27 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
               </button>
 
               <button
-                onClick={handlePrintDocument}
+                onClick={() => {
+                  const isProOrUltra = userProfile?.subscriptionTier === "pro" || userProfile?.subscriptionTier === "ultra";
+                  if (!isProOrUltra) {
+                    setParsingError("ຂໍອະໄພ, ການພິມເອກະສານແມ່ນສະເພາະເວີຊັນ PRO ຫຼື ULTRA ເທົ່ານັ້ນ. ກະລຸນາອັບເກຣດແພັກເກດຂອງທ່ານ! / Printing is exclusive to PRO or ULTRA version. Please upgrade your plan.");
+                    if (onUpgradeClick) {
+                      onUpgradeClick();
+                    }
+                    return;
+                  }
+                  handlePrintDocument();
+                }}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
-                title="Print Document directly on A4 paper format size with custom official settings"
+                title="Print Document directly on A4 paper format size with custom official settings - PRO/ULTRA Only"
               >
                 <Printer className="w-3.5 h-3.5 text-slate-650 dark:text-slate-400" />
                 <span>Print</span>
+                {!(userProfile?.subscriptionTier === "pro" || userProfile?.subscriptionTier === "ultra") && (
+                  <span className="text-[8px] bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 px-1 py-0.2 rounded font-extrabold uppercase font-mono ml-1 font-bold">
+                    Pro+
+                  </span>
+                )}
               </button>
 
               <button
@@ -1636,6 +1695,11 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                   <h4 className="font-extrabold text-slate-950 dark:text-white flex items-center space-x-1.5">
                     <Sparkles className="w-4 h-4 text-tiffany-500" />
                     <span>{isEditing ? "Edit Metadata / ປັບປຸງຂໍ້ມູນ" : "Document Details / ຂໍ້ມູນເອກະສານ"}</span>
+                    {isFreeUser && (
+                      <span className="text-[8px] bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-extrabold uppercase font-mono tracking-wider ml-1">
+                        PRO/ULTRA Only
+                      </span>
+                    )}
                   </h4>
                   {isEditing && (
                     <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 px-2 py-0.5 rounded font-bold tracking-wide uppercase animate-pulse">
@@ -1646,7 +1710,31 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
                 {/* Extraction Metadata Form & Inputs */}
                 <div className="space-y-4">
-                  {isEditing ? (
+                  {isFreeUser ? (
+                    <div className="py-8 px-4 bg-slate-50/50 dark:bg-slate-950/20 rounded-2xl border border-dashed border-slate-250 dark:border-slate-800 text-center flex flex-col items-center justify-center space-y-3 select-none">
+                      <div className="w-10 h-10 rounded-full bg-amber-50 dark:bg-amber-950/50 text-amber-550 flex items-center justify-center shadow-xs">
+                        <Lock className="w-5 h-5 animate-bounce" />
+                      </div>
+                      <div className="space-y-1.5 max-w-sm">
+                        <p className="font-bold text-slate-900 dark:text-white text-xs">
+                          ຂໍ້ມູນເອກະສານ ສະເພາະເວີຊັນ PRO ແລະ ULTRA
+                        </p>
+                        <p className="text-[10.5px] text-slate-500 dark:text-slate-400 leading-normal font-medium">
+                          ຟັງຊັນສະແດງຜົນ ແລະ ປັບແຕ່ງຂໍ້ມູນຫຍໍ້ຂອງເອກະສານແມ່ນສະເພາະເວີຊັນ PRO ຫຼື ULTRA ເທົ່ານັ້ນ. ກະລຸນາອັບເກຣດແພັກເກດຂອງທ່ານເພື່ອປົດລັອກ.
+                        </p>
+                        <p className="text-[10px] text-amber-650 dark:text-amber-450 font-bold leading-normal">
+                          Document Details/Metadata overview is restricted to PRO or ULTRA users.
+                        </p>
+                      </div>
+                      <button
+                        onClick={onUpgradeClick}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[10px] py-2 px-4 rounded-xl shadow-xs transition-all duration-200 hover:scale-102 flex items-center gap-1.5 cursor-pointer select-none"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+                        <span>ອັບເກຣດເວີຊັນ / Upgrade Now</span>
+                      </button>
+                    </div>
+                  ) : isEditing ? (
                     <>
                       <div className="space-y-1">
                         <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Document Title / Subject</label>
@@ -1654,7 +1742,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                           type="text"
                           value={editedTitle}
                           onChange={(e) => setEditedTitle(e.target.value)}
-                          className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                          className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-505/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
                           placeholder="Untitled document"
                         />
                       </div>
@@ -1666,7 +1754,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                             type="text"
                             value={editedRefNo}
                             onChange={(e) => setEditedRefNo(e.target.value)}
-                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-505/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
                             placeholder="e.g. 102/ກະຊວງ"
                           />
                         </div>
@@ -1676,7 +1764,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                             type="text"
                             value={editedRefDate}
                             onChange={(e) => setEditedRefDate(e.target.value)}
-                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-505/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
                             placeholder="e.g. 15.05.2026"
                           />
                         </div>
@@ -1689,7 +1777,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                             type="text"
                             value={editedSender}
                             onChange={(e) => setEditedSender(e.target.value)}
-                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-505/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-905 dark:text-white"
                             placeholder="Primary Sender"
                           />
                         </div>
@@ -1699,7 +1787,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                             type="text"
                             value={editedReceiver}
                             onChange={(e) => setEditedReceiver(e.target.value)}
-                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-550/25 focus:border-indigo-505 focus:outline-none focus:bg-white text-slate-909 dark:text-white"
                             placeholder="Primary Recipient"
                           />
                         </div>
@@ -1711,7 +1799,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                           rows={4}
                           value={editedSummary}
                           onChange={(e) => setEditedSummary(e.target.value)}
-                          className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-950 dark:text-white font-serif italic"
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-505/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-950 dark:text-white font-serif italic"
                           placeholder="Write executive summary here..."
                         />
                       </div>

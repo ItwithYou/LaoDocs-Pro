@@ -94,5 +94,36 @@ service cloud.firestore {
       // Delete documents safely
       allow delete: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
     }
+
+    // Chat and message functions and collections for admin support
+    function isValidChat(data) {
+      return data.chatId is string && data.chatId.size() <= 128
+        && data.userId is string && data.userId.size() <= 128
+        && data.userEmail is string && data.userEmail.size() <= 200
+        && data.userName is string && data.userName.size() <= 200
+        && (data.get('lastMessage', null) == null || (data.lastMessage is string && data.lastMessage.size() <= 10000))
+        && (data.get('unreadByAdmin', null) == null || data.unreadByAdmin is bool)
+        && (data.get('unreadByUser', null) == null || data.unreadByUser is bool);
+    }
+
+    function isValidMessage(data) {
+      return data.messageId is string && data.messageId.size() <= 128
+        && data.senderId is string && data.senderId.size() <= 128
+        && data.senderName is string && data.senderName.size() <= 200
+        && (data.get('text', null) == null || (data.text is string && data.text.size() <= 500000))
+        && (data.get('screenshot', null) == null || (data.screenshot is string && data.screenshot.size() <= 2500000));
+    }
+
+    match /chats/{chatId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == chatId);
+      allow create, update: if isAdmin() || (isSignedIn() && request.auth.uid == chatId && isValidId(chatId) && isValidChat(request.resource.data));
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAdmin() || (isSignedIn() && request.auth.uid == chatId);
+        allow create: if isAdmin() || (isSignedIn() && request.auth.uid == chatId && isValidId(messageId) && isValidMessage(request.resource.data) && request.resource.data.createdAt == request.time);
+        allow update, delete: if isAdmin();
+      }
+    }
   }
 }

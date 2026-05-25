@@ -11,6 +11,7 @@ import DocumentConverter from "./components/DocumentConverter";
 import SubscriptionModal from "./components/SubscriptionModal";
 import AdminDashboard from "./components/AdminDashboard";
 import ProfileModal from "./components/ProfileModal";
+import SupportChat from "./components/SupportChat";
 import { Shield, Sparkles, Building, Briefcase, FileText } from "lucide-react";
 
 export default function App() {
@@ -336,6 +337,7 @@ export default function App() {
           userProfile={userProfile} 
           onClose={() => setIsProfileModalOpen(false)} 
           onUpdate={setUserProfile} 
+          onLoginClick={handleGoogleLoginDirect}
         />
       )}
     </div>
