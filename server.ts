@@ -71,7 +71,9 @@ For the converted formatted content (HTML formatted), you MUST ALWAYS separate L
 2. Every Latin letter (English word / name), Number (digits 0-9), punctuation (/, -, (, ), &), or code reference MUST be wrapped in an HTML span tag with the class "font-roman":
    e.g., <span class="font-roman">No. 129/PM</span>, <span class="font-roman">2026-05-25</span>, <span class="font-roman">Ministry</span>.
 3. CRITICAL: Clean all double spaces and remove unnecessary spaces between words, especially in Lao text (as Lao generally does not use spaces between words). Ensure there are no double spaces.
-4. Correct and fix any Error Fonts, weird font artifacts, legacy encoded text, and typos. Fix font errors so everything is clean Unicode Lao.
+4. Correct and fix any Error Fonts, weird font artifacts, legacy encoded text, and typos. Fix font errors so everything is clean Unicode Lao.`;
+
+    const templateInstruction = `
 5. Structure the output as an elegant, clean Lao Government formal letter template containing:
    - Motto header: centered "ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ" (font-lao) and "ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນາຖາວອນ" (font-lao)
    - Left side: Issuer organization / Department
@@ -98,6 +100,7 @@ ${processedRawText}
 Write a completely polished, formal Lao government letter/document satisfying the user's request while strictly following the admin's structural rules above.
 Expand on details formally if the user's draft is too brief.
 ${formatInstruction}
+${templateInstruction}
 `;
       contents.push({ text: promptString });
     } else if (promptType === "font-convert" || isWordDoc) {
@@ -105,9 +108,9 @@ ${formatInstruction}
 You are given a raw piece of text written in Lao.
 Perform the following:
 1. Parse and correct any spelling/typo errors.
-2. If it contains old Lao font spellings or transcriptions (such as Saysettha, Sanyasit), convert them to modern unicode Lao text.
-3. Format it beautifully into a standard Lao government official letter layout.
-${formatInstruction}
+2. If it contains old Lao font spellings or transcriptions (such as Saysettha, Sanyasit), convert them to modern unicode Lao text (Phetsarath OT / standard Lao).
+3. Do NOT add any extra information, headers, or structural content that is not present in the source text. Your job is ONLY to convert and format the exact text provided securely.
+4. Output the raw plain text. DO NOT use any HTML tags like <span class="font-roman">, just output exactly the converted text.
 
 Text to convert:
 """
@@ -132,6 +135,7 @@ ${processedRawText}
 You are given an uploaded ${isPdf ? "PDF" : "Image"} document containing a Lao formal letter or business log.
 Perform OCR, correct any transcription errors, convert any legacy Lao fonts (typewriter or legacy ASCII representations) to modern unicode Lao language, and align the output with standard Lao government administration patterns.
 ${formatInstruction}
+${templateInstruction}
 `;
       contents.push(documentPart);
       contents.push({ text: promptString });

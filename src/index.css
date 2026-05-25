@@ -1,7 +1,10 @@
 @import url('https://fonts.googleapis.com/css2?family=Phetsarath:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 
-@custom-variant dark (&:is(.dark *));
+@variant dark (.dark &);
+@variant soft-blue (.soft-blue &);
+@variant warm-clay (.warm-clay &);
+@variant fresh-mint (.fresh-mint &);
 
 @theme {
   --font-sans: "Inter", "Phetsarath", ui-sans-serif, system-ui, sans-serif;
@@ -19,13 +22,180 @@
   --color-tiffany-800: #125f5e;
   --color-tiffany-900: #134e4e;
   --color-tiffany-950: #072d2e;
+}
 
-  /* Custom blue-toned slate for deep blue dark mode */
-  --color-slate-950: #050b1a;
-  --color-slate-900: #081229;
-  --color-slate-850: #0d1a3a;
-  --color-slate-800: #132247;
-  --color-slate-700: #1d3363;
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 transition-colors duration-300;
+  }
+}
+
+/* Warm Clay theme color mapping (MockOS cream and golden-brown clay style) */
+.warm-clay {
+  /* Slate -> Warm Clay tones */
+  --color-white: #fdfaf2;
+  --color-slate-50: #ece5d8;
+  --color-slate-100: #e2dac9;
+  --color-slate-200: #dfd7c5;
+  --color-slate-300: #d6ccb8;
+  --color-slate-400: #b09a80;
+  --color-slate-500: #8d7962;
+  --color-slate-600: #6a5a48;
+  --color-slate-700: #55483a;
+  --color-slate-800: #4b3c2a;
+  --color-slate-900: #3c2f21;
+  --color-slate-950: #2b2116;
+
+  /* Indigo primary -> Gold / Ochre */
+  --color-indigo-50: #faf5eb;
+  --color-indigo-100: #f1ebd8;
+  --color-indigo-200: #eadebe;
+  --color-indigo-300: #d8c395;
+  --color-indigo-400: #c2a366;
+  --color-indigo-500: #b28726;
+  --color-indigo-600: #9d741c;
+  --color-indigo-700: #866114;
+  --color-indigo-800: #714f10;
+  --color-indigo-900: #5e400e;
+  --color-indigo-950: #3a2505;
+
+  /* Emerald -> Gold / Ochre matching */
+  --color-emerald-50: #faf5eb;
+  --color-emerald-100: #f1ebd8;
+  --color-emerald-200: #eadebe;
+  --color-emerald-300: #d8c395;
+  --color-emerald-400: #c2a366;
+  --color-emerald-500: #b28726;
+  --color-emerald-600: #9d741c;
+  --color-emerald-700: #866114;
+  --color-emerald-800: #714f10;
+  --color-emerald-900: #5e400e;
+  --color-emerald-950: #3a2505;
+
+  /* Tiffany custom brand -> Gold / Ochre */
+  --color-tiffany-50: #faf7f0;
+  --color-tiffany-100: #f5eedc;
+  --color-tiffany-200: #eadebe;
+  --color-tiffany-300: #d8c395;
+  --color-tiffany-400: #c2a366;
+  --color-tiffany-500: #b28726;
+  --color-tiffany-600: #9d741c;
+  --color-tiffany-700: #866114;
+  --color-tiffany-800: #714f10;
+  --color-tiffany-900: #5e400e;
+  --color-tiffany-950: #3a2505;
+}
+
+/* Fresh Mint theme color mapping (Beautiful mint, teal and cyan style) */
+.fresh-mint {
+  /* Slate -> Teal tones */
+  --color-white: #f7fdfd;
+  --color-slate-50: #f0fafb;
+  --color-slate-100: #e2f4f5;
+  --color-slate-200: #d6eff1;
+  --color-slate-300: #bae3e6;
+  --color-slate-400: #82c4c9;
+  --color-slate-500: #558793;
+  --color-slate-600: #3b6b77;
+  --color-slate-700: #25535e;
+  --color-slate-800: #164650;
+  --color-slate-900: #0c3e49;
+  --color-slate-950: #052932;
+
+  /* Indigo primary -> Teal / Mint */
+  --color-indigo-50: #f0fafb;
+  --color-indigo-100: #d4f4f5;
+  --color-indigo-200: #aaf0f2;
+  --color-indigo-300: #6be3e6;
+  --color-indigo-400: #2cb1b1;
+  --color-indigo-500: #2cb1b1;
+  --color-indigo-600: #1e9191;
+  --color-indigo-700: #167575;
+  --color-indigo-800: #115e5e;
+  --color-indigo-900: #0d4a4a;
+  --color-indigo-950: #062b2b;
+
+  /* Emerald -> Teal */
+  --color-emerald-50: #f0fafb;
+  --color-emerald-100: #d4f4f5;
+  --color-emerald-200: #aaf0f2;
+  --color-emerald-300: #6be3e6;
+  --color-emerald-400: #2cb1b1;
+  --color-emerald-500: #2cb1b1;
+  --color-emerald-600: #1e9191;
+  --color-emerald-700: #167575;
+  --color-emerald-800: #115e5e;
+  --color-emerald-900: #0d4a4a;
+  --color-emerald-950: #062b2b;
+
+  /* Tiffany custom brand -> Teal */
+  --color-tiffany-50: #f0fafb;
+  --color-tiffany-100: #d4f4f5;
+  --color-tiffany-200: #aaf0f2;
+  --color-tiffany-300: #6be3e6;
+  --color-tiffany-400: #42cdcd;
+  --color-tiffany-500: #2cb1b1;
+  --color-tiffany-600: #1e9191;
+  --color-tiffany-700: #167575;
+  --color-tiffany-800: #115e5e;
+  --color-tiffany-900: #0d4a4a;
+  --color-tiffany-950: #062b2b;
+}
+
+/* Soft Blue theme color mapping (Airy, clean blue style) */
+.soft-blue {
+  /* White remains white, Slate -> Cool Blue Grays */
+  --color-white: #ffffff;
+  --color-slate-50: #f5f9fc;
+  --color-slate-100: #eef5fc;
+  --color-slate-200: #dbe4f0;
+  --color-slate-300: #b5c7db;
+  --color-slate-400: #8ea5c2;
+  --color-slate-500: #64748b;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1e293b;
+  --color-slate-900: #0f172a;
+  --color-slate-950: #020617;
+
+  /* Indigo primary -> Bright Blue (like Tailwind Blue branch) */
+  --color-indigo-50: #eff6ff;
+  --color-indigo-100: #dbeafe;
+  --color-indigo-200: #bfdbfe;
+  --color-indigo-300: #93c5fd;
+  --color-indigo-400: #60a5fa;
+  --color-indigo-500: #3b82f6;
+  --color-indigo-600: #2563eb;
+  --color-indigo-700: #1d4ed8;
+  --color-indigo-800: #1e40af;
+  --color-indigo-900: #1e3a8a;
+  --color-indigo-950: #172554;
+
+  /* Emerald -> Blue */
+  --color-emerald-50: #eff6ff;
+  --color-emerald-100: #dbeafe;
+  --color-emerald-200: #bfdbfe;
+  --color-emerald-300: #93c5fd;
+  --color-emerald-400: #60a5fa;
+  --color-emerald-500: #3b82f6;
+  --color-emerald-600: #2563eb;
+  --color-emerald-700: #1d4ed8;
+  --color-emerald-800: #1e40af;
+  --color-emerald-900: #1e3a8a;
+  --color-emerald-950: #172554;
+
+  /* Tiffany custom brand -> Bright Blue */
+  --color-tiffany-50: #eff6ff;
+  --color-tiffany-100: #dbeafe;
+  --color-tiffany-200: #bfdbfe;
+  --color-tiffany-300: #93c5fd;
+  --color-tiffany-400: #60a5fa;
+  --color-tiffany-500: #3b82f6;
+  --color-tiffany-600: #2563eb;
+  --color-tiffany-700: #1d4ed8;
+  --color-tiffany-800: #1e40af;
+  --color-tiffany-900: #1e3a8a;
+  --color-tiffany-950: #172554;
 }
 
 /* Custom styled helpers for converted typography */
@@ -37,16 +207,26 @@
   font-family: "Times New Roman", "Times", serif !important;
 }
 
-/* Standard government layouts */
+/* Standard layouts */
 .gov-letter-preview {
-  background-color: #ffffff;
-  color: #111827;
   font-size: 1rem;
   line-height: 1.8;
 }
 
 .gov-letter-preview p {
   margin-bottom: 0.75rem;
+}
+
+@keyframes marquee {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100%); }
+}
+
+.animate-marquee {
+  animation: marquee 25s linear infinite;
+  white-space: nowrap;
+  display: inline-flex;
+  will-change: transform;
 }
 
 

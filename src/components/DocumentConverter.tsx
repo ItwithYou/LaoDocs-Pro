@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
-import { UserProfile, LaoLetterDocument, SUBSCRIPTION_PLANS, DocumentTemplate } from "../types";
-import { db, handleFirestoreError, OperationType } from "../firebase";
-import { doc, setDoc, serverTimestamp, collection, getDocs, query, orderBy } from "firebase/firestore";
-import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock } from "lucide-react";
+import { UserProfile, LaoLetterDocument, SUBSCRIPTION_PLANS, DocumentTemplate, AIDocumentType } from "../types";
+import { db, handleFirestoreError, OperationType, safeGetDocs, safeSetDoc } from "../firebase";
+import { doc, serverTimestamp, collection, query, orderBy } from "firebase/firestore";
+import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock, Printer, Edit, Save, Presentation } from "lucide-react";
 
 interface DocumentConverterProps {
   userProfile: UserProfile | null;
@@ -19,6 +19,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
   const [files, setFiles] = useState<File[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [inputText, setInputText] = useState("");
+  const [textOutput, setTextOutput] = useState("");
   const [activeTab, setActiveTab] = useState<"upload" | "text" | "templates" | "generate">("upload");
   const [parsingError, setParsingError] = useState<string | null>(null);
   const [templates, setTemplates] = useState<DocumentTemplate[]>([]);
@@ -30,7 +31,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     const fetchTemplates = async () => {
       try {
         const q = query(collection(db, "templates"), orderBy("createdAt", "desc"));
-        const snap = await getDocs(q);
+        const snap = await safeGetDocs(q);
         const tmpls = snap.docs.map(d => ({id: d.id, ...d.data()}) as DocumentTemplate);
         setTemplates(tmpls);
       } catch (e) {
@@ -41,7 +42,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     const fetchAiTypes = async () => {
       try {
         const q = query(collection(db, "aitypes"), orderBy("createdAt", "desc"));
-        const snap = await getDocs(q);
+        const snap = await safeGetDocs(q);
         const types = snap.docs.map(d => ({id: d.id, ...d.data()}) as AIDocumentType);
         setAiTypes(types);
         if (types.length > 0 && !selectedAiType) setSelectedAiType(types[0].id || "");
@@ -58,6 +59,40 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
   const [convertedResult, setConvertedResult] = useState<any | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+
+  // Document Editing states
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedHtml, setEditedHtml] = useState("");
+  const [editedTitle, setEditedTitle] = useState("");
+  const [editedSender, setEditedSender] = useState("");
+  const [editedReceiver, setEditedReceiver] = useState("");
+  const [editedRefNo, setEditedRefNo] = useState("");
+  const [editedRefDate, setEditedRefDate] = useState("");
+  const [editedSummary, setEditedSummary] = useState("");
+
+  const activeDocument = convertedResult || selectedDocument;
+
+  // Synchronize editing inputs with selected document
+  useEffect(() => {
+    if (activeDocument) {
+      setEditedHtml(activeDocument.convertedText || "");
+      setEditedTitle(activeDocument.title || "");
+      setEditedSender(activeDocument.sender || "");
+      setEditedReceiver(activeDocument.receiver || "");
+      setEditedRefNo(activeDocument.referenceNo || activeDocument.referenceNo || "");
+      setEditedRefDate(activeDocument.referenceDate || activeDocument.referenceDate || "");
+      setEditedSummary(activeDocument.summary || "");
+    } else {
+      setEditedHtml("");
+      setEditedTitle("");
+      setEditedSender("");
+      setEditedReceiver("");
+      setEditedRefNo("");
+      setEditedRefDate("");
+      setEditedSummary("");
+      setIsEditing(false);
+    }
+  }, [convertedResult, selectedDocument]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -178,7 +213,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         originalText: docToSave.originalText || "",
         createdAt: serverTimestamp(),
       };
-      await setDoc(newDocRef, docPayload);
+      await safeSetDoc(newDocRef, docPayload);
     } catch (err) {
       console.error(err);
     }
@@ -256,7 +291,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         });
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Failed to process text conversion.");
-        setConvertedResult(data);
+        setTextOutput(data.convertedText || "");
         if (!userProfile) {
           const newVal = guestConversionsLeft - 1;
           localStorage.setItem("guestConversionsLeft", newVal.toString());
@@ -264,7 +299,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         }
       } else {
         if (files.length === 0) {
-          setParsingError("ກະລຸນາເລືອກ ຫຼື ວາງຟາຍເອກະສານກ່ອນ / Please upload an image or PDF letter.");
+          setParsingError("ກະລຸນາເລືອກ ຫຼື ວາງຟາຍເອກະສານກ່ອນ / Please upload an image, PDF, or PowerPoint document.");
           setIsProcessing(false);
           return;
         }
@@ -353,17 +388,17 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
       const docPayload: any = {
         documentId: documentId,
         ownerId: userProfile.userId,
-        title: docToSave.title || "ເອກະສານແປງແລ້ວ / Converted Document",
-        sender: docToSave.sender || "",
-        receiver: docToSave.receiver || "",
+        title: editedTitle || docToSave.title || "ເອກະສານແປງແລ້ວ / Converted Document",
+        sender: editedSender !== undefined ? editedSender : (docToSave.sender || ""),
+        receiver: editedReceiver !== undefined ? editedReceiver : (docToSave.receiver || ""),
         sourceType: activeTab === "text" ? "text" : "image/pdf",
         originalText: docToSave.originalText || "",
-        convertedText: docToSave.convertedText || "",
+        convertedText: editedHtml || docToSave.convertedText || "",
         status: docToSave.status || "saved",
         flowStatus: docToSave.flowStatus || "Draft & Verified",
-        referenceNo: docToSave.referenceNo || "",
-        referenceDate: docToSave.referenceDate || "",
-        summary: docToSave.summary || "",
+        referenceNo: editedRefNo !== undefined ? editedRefNo : (docToSave.referenceNo || ""),
+        referenceDate: editedRefDate !== undefined ? editedRefDate : (docToSave.referenceDate || ""),
+        summary: editedSummary !== undefined ? editedSummary : (docToSave.summary || ""),
         updatedAt: serverTimestamp(),
       };
 
@@ -373,7 +408,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         docPayload.createdAt = selectedDocument.createdAt;
       }
 
-      await setDoc(newDocRef, docPayload);
+      await safeSetDoc(newDocRef, docPayload);
       setIsSaving(false);
       onDocumentSaved();
       
@@ -394,10 +429,10 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     const activeDoc = convertedResult || selectedDocument;
     if (!activeDoc) return;
 
-    const title = activeDoc.title || "Letter_Converted";
+    const title = editedTitle || activeDoc.title || "Letter_Converted";
     const bodyContent = `
       <div class="WordSection1">
-        ${activeDoc.convertedText || ""}
+        ${editedHtml || activeDoc.convertedText || ""}
       </div>
     `;
 
@@ -488,8 +523,8 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     const activeDoc = convertedResult || selectedDocument;
     if (!activeDoc) return;
 
-    const title = activeDoc.title || "Letter_Converted";
-    const bodyHTML = activeDoc.convertedText || "";
+    const title = editedTitle || activeDoc.title || "Letter_Converted";
+    const bodyHTML = editedHtml || activeDoc.convertedText || "";
 
     // Create a clean layout preserving headers and structural table elements for Microsoft Excel compatibility
     const header = `
@@ -542,23 +577,23 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
           <tbody>
             <tr>
               <td><strong>Reference Number</strong></td>
-              <td colspan="3">${activeDoc.referenceNo || "-"}</td>
+              <td colspan="3">${editedRefNo !== undefined ? editedRefNo : (activeDoc.referenceNo || "-")}</td>
             </tr>
             <tr>
               <td><strong>Letter Date</strong></td>
-              <td colspan="3">${activeDoc.referenceDate || "-"}</td>
+              <td colspan="3">${editedRefDate !== undefined ? editedRefDate : (activeDoc.referenceDate || "-")}</td>
             </tr>
             <tr>
               <td><strong>Sender Agency</strong></td>
-              <td colspan="3">${activeDoc.sender || "-"}</td>
+              <td colspan="3">${editedSender !== undefined ? editedSender : (activeDoc.sender || "-")}</td>
             </tr>
             <tr>
               <td><strong>Recipient Agency</strong></td>
-              <td colspan="3">${activeDoc.receiver || "-"}</td>
+              <td colspan="3">${editedReceiver !== undefined ? editedReceiver : (activeDoc.receiver || "-")}</td>
             </tr>
             <tr>
               <td><strong>AI Executive Summary</strong></td>
-              <td colspan="3" style="background-color: #f8fafc; font-style: italic;">${activeDoc.summary || "-"}</td>
+              <td colspan="3" style="background-color: #f8fafc; font-style: italic;">${editedSummary !== undefined ? editedSummary : (activeDoc.summary || "-")}</td>
             </tr>
             <tr>
               <td colspan="4" style="background-color: #072d2e; color: white; font-weight: bold; height: 35px; text-align: center;">
@@ -586,6 +621,236 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     document.body.removeChild(link);
   };
 
+  // Export to Microsoft PowerPoint using pptxgenjs package
+  const handleDownloadPPT = () => {
+    const activeDoc = convertedResult || selectedDocument;
+    if (!activeDoc) return;
+
+    // Build PPTX library instance
+    import("pptxgenjs").then((pptxgenModule) => {
+      const pptx = new pptxgenModule.default();
+      const title = editedTitle || activeDoc.title || "Letter_Converted";
+      pptx.layout = "LAYOUT_16x9";
+
+      // SLIDE 1: formal cover page
+      const slide1 = pptx.addSlide();
+      slide1.background = { fill: "F8FAFC" }; // off white / slate
+
+      // Frame layout accent
+      slide1.addShape(pptx.ShapeType.rect, {
+        x: 0.5, y: 0.5, w: 9.0, h: 4.625,
+        line: { color: "0ABAB5", width: 2 }
+      });
+
+      // Cover Logo block
+      slide1.addText("ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ", {
+        x: 1.0, y: 0.8, w: 8.0, h: 0.4,
+        align: "center", fontFace: "Phetsarath OT", fontSize: 15, bold: true, color: "0D9692"
+      });
+      slide1.addText("ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນາຖາວອນ", {
+        x: 1.0, y: 1.15, w: 8.0, h: 0.3,
+        align: "center", fontFace: "Phetsarath OT", fontSize: 10, italic: true, color: "64748B"
+      });
+
+      // Title
+      slide1.addText(title, {
+        x: 1.0, y: 1.8, w: 8.0, h: 1.2,
+        align: "center", fontFace: "Phetsarath OT", fontSize: 22, bold: true, color: "1E293B"
+      });
+
+      // Metadata values
+      slide1.addText(`ເລກທີ: ${editedRefNo || activeDoc.referenceNo || "-"}     ວັນທີ: ${editedRefDate || activeDoc.referenceDate || "-"}`, {
+        x: 1.0, y: 3.1, w: 8.0, h: 0.4,
+        align: "center", fontFace: "Phetsarath OT", fontSize: 13, bold: true, color: "475569"
+      });
+
+      slide1.addText(`ຈາກ / Sender: ${editedSender || activeDoc.sender || "-"} \nເຖິງ / Recipient: ${editedReceiver || activeDoc.receiver || "-"}`, {
+        x: 1.0, y: 3.7, w: 8.0, h: 0.8,
+        align: "center", fontFace: "Phetsarath OT", fontSize: 11, italic: true, color: "475569"
+      });
+
+      slide1.addText("LAODOC OFFICIAL PRESENTATION SLIDES", {
+        x: 1.0, y: 4.8, w: 8.0, h: 0.3,
+        align: "center", fontFace: "Arial", fontSize: 8, bold: true, color: "94A3B8"
+      });
+
+      // SLIDE 2: Executive summary slide if exists
+      const summaryText = editedSummary || activeDoc.summary;
+      if (summaryText) {
+        const slide2 = pptx.addSlide();
+        slide2.background = { fill: "FFFFFF" };
+        
+        slide2.addText("ບົດສະຫຼຸບຫຍໍ້ / Executive Summary", {
+          x: 0.7, y: 0.5, w: 8.6, h: 0.6,
+          align: "left", fontFace: "Phetsarath OT", fontSize: 18, bold: true, color: "0D9692"
+        });
+
+        slide2.addShape(pptx.ShapeType.line, {
+          x: 0.7, y: 1.1, w: 8.6, h: 0.0,
+          line: { color: "CCCCCC", width: 1 }
+        });
+
+        slide2.addText(summaryText, {
+          x: 0.7, y: 1.5, w: 8.6, h: 3.5,
+          align: "left", fontFace: "Phetsarath OT", fontSize: 13, color: "334155", lineSpacing: 22
+        });
+      }
+
+      // SLIDE 3+: split paragraphs out as content pages
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = editedHtml || activeDoc.convertedText || "";
+
+      let textBlocks: string[] = [];
+      const paragraphs = tempDiv.querySelectorAll("p, div, li, tr");
+      if (paragraphs.length > 0) {
+        paragraphs.forEach(p => {
+          const txt = p.textContent?.trim();
+          if (txt && txt.length > 10 && !textBlocks.includes(txt)) {
+            textBlocks.push(txt);
+          }
+        });
+      } else {
+        const text = tempDiv.innerText || tempDiv.textContent || "";
+        textBlocks = text.split("\n").map(t => t.trim()).filter(t => t.length > 10);
+      }
+
+      // Clean metadata noise
+      textBlocks = textBlocks.filter(b => 
+        !b.includes("ສາທາລະນະລັດ") && 
+        !b.includes("ສັນຕິພາບ") &&
+        !b.includes("ເລກທີ") &&
+        !b.includes("ວັນທີ")
+      );
+
+      let currentSlideText = "";
+      let slideIndex = 1;
+
+      const addSlideBlock = (txtBlock: string, idx: number) => {
+        const slide = pptx.addSlide();
+        slide.background = { fill: "FFFFFF" };
+
+        slide.addText(`ເນື້ອໃນເອກະສານ / Document Content (ພາກທີ ${idx})`, {
+          x: 0.7, y: 0.5, w: 8.6, h: 0.6,
+          align: "left", fontFace: "Phetsarath OT", fontSize: 18, bold: true, color: "0D9692"
+        });
+
+        slide.addShape(pptx.ShapeType.line, {
+          x: 0.7, y: 1.1, w: 8.6, h: 0.0,
+          line: { color: "CCCCCC", width: 1 }
+        });
+
+        slide.addText(txtBlock, {
+          x: 0.7, y: 1.5, w: 8.6, h: 3.5,
+          align: "left", fontFace: "Phetsarath OT", fontSize: 12, color: "1E293B", lineSpacing: 22
+        });
+      };
+
+      for (const block of textBlocks) {
+        if ((currentSlideText + "\n\n" + block).length > 550 && currentSlideText.length > 0) {
+          addSlideBlock(currentSlideText, slideIndex);
+          slideIndex++;
+          currentSlideText = block;
+        } else {
+          currentSlideText = currentSlideText ? (currentSlideText + "\n\n" + block) : block;
+        }
+      }
+
+      if (currentSlideText) {
+        addSlideBlock(currentSlideText, slideIndex);
+      }
+
+      pptx.writeFile({ fileName: `${title.replace(/\s+/g, "_")}_slides.pptx` });
+    }).catch(err => {
+      console.error("Failed to load pptxgenjs", err);
+      alert("Error generating PowerPoint Slides. Please try again.");
+    });
+  };
+
+  // Formal A4 print configuration setup (Top: 2cm, Right: 2cm, Bottom: 2cm, Left: 3cm)
+  const handlePrintDocument = () => {
+    const activeDoc = convertedResult || selectedDocument;
+    if (!activeDoc) return;
+
+    const printTitle = editedTitle || activeDoc.title || "Official Document Print";
+    const printContent = editedHtml || activeDoc.convertedText || "";
+
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      alert("Pop-up blocked! Please allow pop-ups to print this document on official A4 size.");
+      return;
+    }
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>${printTitle}</title>
+          <style>
+            @import url('https://fonts.googleapis.com/css2?family=Phetsarath&display=swap');
+            
+            @page {
+              size: A4;
+              margin: 0 !important; /* Disables browser-injected title, date/time, URL, and page fraction headers/footers */
+            }
+            
+            body {
+              font-family: 'Times New Roman', 'Phetsarath', 'Phetsarath OT', serif;
+              font-size: 14px;
+              line-height: 1.8;
+              color: #000;
+              margin: 0 !important;
+              padding: 2cm 2cm 2cm 3cm !important; /* Official government margins: Top 2cm, Right 2cm, Bottom 2cm, Left 3cm */
+              background: #fff;
+              box-sizing: border-box;
+            }
+
+            .font-lao {
+              font-family: 'Phetsarath OT', 'Phetsarath', sans-serif !important;
+            }
+
+            .font-roman {
+              font-family: 'Times New Roman', serif !important;
+            }
+
+            p {
+              margin-top: 0;
+              margin-bottom: 8pt;
+            }
+
+            .center {
+              text-align: center;
+            }
+
+            .right {
+              text-align: right;
+            }
+
+            @media print {
+              body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="font-lao">
+            ${printContent}
+          </div>
+          <script>
+            window.onload = function() {
+              window.print();
+              setTimeout(function() {
+                window.close();
+              }, 600);
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   const copyToClipboard = () => {
     const activeDoc = convertedResult || selectedDocument;
     if (!activeDoc) return;
@@ -601,9 +866,6 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
       setTimeout(() => setIsCopied(false), 2000);
     });
   };
-
-  // Active letter being rendered
-  const activeDocument = convertedResult || selectedDocument;
 
   return (
     <div className="space-y-6" id="document-converter-card">
@@ -624,7 +886,11 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
             </button>
             <button
               onClick={() => { 
-                if (!userProfile || userProfile.subscriptionTier === "free") {
+                if (!userProfile) {
+                  if (onRequireLogin) onRequireLogin();
+                  return;
+                }
+                if (userProfile.subscriptionTier === "free") {
                   if (onUpgradeClick) {
                     onUpgradeClick();
                   } else {
@@ -645,7 +911,11 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
             </button>
             <button
               onClick={() => { 
-                if (!userProfile || userProfile.subscriptionTier === "free") {
+                if (!userProfile) {
+                  if (onRequireLogin) onRequireLogin();
+                  return;
+                }
+                if (userProfile.subscriptionTier === "free") {
                   if (onUpgradeClick) {
                     onUpgradeClick();
                   } else {
@@ -882,15 +1152,27 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
               </div>
             ) : (
               /* Text normalizer area */
-              <div className="space-y-3">
-                <label className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">RAW OLD LAO TEXT (Saysettha/Sanyasit ASCII plain transcription)</label>
-                <textarea
-                  rows={6}
-                  value={inputText}
-                  onChange={(e) => setInputText(e.target.value)}
-                  placeholder="ວາງຂໍ້ຄວາມຢູ່ບ່ອນນີ້... Paste old Lao typewriter texts here to normalize fonts to official Phetsarath OT, correct administrative errors, and format standard templates."
-                  className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-lao focus:outline-none focus:ring-2 focus:ring-tiffany-500/20 focus:border-tiffany-500 text-slate-900 dark:text-slate-100"
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-3">
+                  <label className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">RAW OLD LAO TEXT (Saysettha/Sanyasit ASCII)</label>
+                  <textarea
+                    rows={8}
+                    value={inputText}
+                    onChange={(e) => setInputText(e.target.value)}
+                    placeholder="ວາງຂໍ້ຄວາມຢູ່ບ່ອນນີ້... Paste old Lao typewriter texts here to convert fonts to official Phetsarath OT / Times New Roman."
+                    className="w-full bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs focus:outline-none focus:ring-2 focus:ring-tiffany-500/20 focus:border-tiffany-500 text-slate-900 dark:text-slate-100"
+                  />
+                </div>
+                <div className="space-y-3">
+                  <label className="block text-slate-500 font-bold uppercase tracking-wider text-[10px]">MODERN LAO TEXT (Phetsarath OT)</label>
+                  <textarea
+                    rows={8}
+                    value={textOutput}
+                    readOnly
+                    placeholder="Converted text will appear here. You can copy it directly."
+                    className="w-full bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-3 text-xs font-lao focus:outline-none text-slate-900 dark:text-slate-100"
+                  />
+                </div>
               </div>
             )}
 
@@ -908,49 +1190,89 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                   )}
                 </div>
 
-                <button
-                  disabled={isProcessing}
-                  onClick={handleConvertAction}
-                  className="bg-slate-900 text-white hover:bg-slate-850 py-2.5 px-6 rounded-xl font-bold transition flex items-center space-x-2 shadow-xs cursor-pointer select-none disabled:opacity-75"
-                  id="convert-trigger-btn"
-                >
-                  {isProcessing ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>ກຳລັງສະແກນວິເຄາະ / Core Scanning...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Languages className="w-4 h-4" />
-                      <span>ແປງເອກະສານ / Convert & Format</span>
-                    </>
+                <div className="flex items-center gap-3">
+                  {activeTab === "text" && textOutput && (
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(textOutput);
+                        setIsCopied(true);
+                        setTimeout(() => setIsCopied(false), 2000);
+                      }}
+                      className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2"
+                      title="Copy Converted Text"
+                    >
+                      {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                      <span className="text-xs font-bold hidden sm:block">{isCopied ? "Copied" : "Copy"}</span>
+                    </button>
                   )}
-                </button>
+                  <button
+                    disabled={isProcessing}
+                    onClick={handleConvertAction}
+                    className="bg-slate-900 text-white hover:bg-slate-850 py-2.5 px-6 rounded-xl font-bold transition flex items-center space-x-2 shadow-xs cursor-pointer select-none disabled:opacity-75"
+                    id="convert-trigger-btn"
+                  >
+                    {isProcessing ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>ກຳລັງສະແກນວິເຄາະ / Core Scanning...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Languages className="w-4 h-4" />
+                        <span>{activeTab === "text" ? "Convert" : "ແປງເອກະສານ / Convert & Format"}</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
       ) : (
         /* Render Converted output Preview */
-        <div className="space-y-4">
+        <div className="space-y-4 font-sans text-slate-800 dark:text-slate-200">
           {/* Top Action Toolbar */}
-          <div className="flex items-center justify-between p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs">
-            <div className="flex items-center space-x-1.5 overflow-x-auto scbar-none">
+          <div className="flex flex-row flex-nowrap items-center justify-between gap-3 p-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xs overflow-x-auto scbar-none w-full select-none">
+            <div className="flex flex-row flex-nowrap items-center gap-1.5 shrink-0">
               <button
                 onClick={handleSaveToCabinet}
                 disabled={isSaving}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-sm whitespace-nowrap cursor-pointer disabled:opacity-75"
-                title="Save Document"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-705 dark:text-slate-100 bg-emerald-50 hover:bg-emerald-150 border border-emerald-200/60 dark:bg-emerald-950/20 dark:border-emerald-800 text-emerald-700 dark:text-emerald-350 hover:scale-102 transition shrink-0 cursor-pointer disabled:opacity-70"
+                title="Save Changes to Cabinet"
               >
-                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <Save className="w-3.5 h-3.5" />
                 <span>{isSaving ? "Saving..." : "Save"}</span>
               </button>
 
-              <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+              <div className="w-px h-5 bg-slate-250 dark:bg-slate-700 mx-1"></div>
+
+              <button
+                onClick={() => setIsEditing(!isEditing)}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs whitespace-nowrap cursor-pointer hover:scale-102 ${
+                  isEditing 
+                    ? "bg-indigo-650 text-white hover:bg-indigo-700 border border-indigo-600 dark:bg-indigo-800 dark:border-indigo-750" 
+                    : "bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-250 dark:border-slate-750 hover:bg-slate-100 dark:hover:bg-slate-700"
+                }`}
+                title={isEditing ? "Exit Edit Mode and View Final Draft" : "Turn on Edit Mode to Modify Fields & Text Directly"}
+              >
+                {isEditing ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-white animate-pulse" />
+                    <span>Done Editing</span>
+                  </>
+                ) : (
+                  <>
+                    <Edit className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Edit</span>
+                  </>
+                )}
+              </button>
+
+              <div className="w-px h-5 bg-slate-250 dark:bg-slate-700 mx-0.5"></div>
 
               <button
                 onClick={handleDownloadWord}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-sm whitespace-nowrap cursor-pointer"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
                 title="Export Microsoft Word (.DOC)"
               >
                 <Download className="w-3.5 h-3.5 text-blue-500" />
@@ -959,7 +1281,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
               <button
                 onClick={handleDownloadExcel}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-sm whitespace-nowrap cursor-pointer"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
                 title="Export Microsoft Excel (.XLS)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -967,8 +1289,26 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
               </button>
 
               <button
+                onClick={handleDownloadPPT}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
+                title="Export Slide PowerPoint (.PPTX)"
+              >
+                <Presentation className="w-3.5 h-3.5 text-amber-500" />
+                <span>PowerPoint</span>
+              </button>
+
+              <button
+                onClick={handlePrintDocument}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
+                title="Print Document directly on A4 paper format size with custom official settings"
+              >
+                <Printer className="w-3.5 h-3.5 text-slate-650 dark:text-slate-400" />
+                <span>Print</span>
+              </button>
+
+              <button
                 onClick={copyToClipboard}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 transition shadow-sm whitespace-nowrap cursor-pointer"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 hover:scale-102 transition whitespace-nowrap cursor-pointer"
                 title="Copy Cleaned Plain Text"
               >
                 <Copy className="w-3.5 h-3.5 text-slate-400 dark:text-slate-500" />
@@ -978,98 +1318,192 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
             <button
               onClick={() => { setConvertedResult(null); onClearSelected(); }}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 transition whitespace-nowrap cursor-pointer shrink-0 ml-4"
+              className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-red-650 dark:text-red-400 bg-red-50 dark:bg-red-500/10 hover:bg-red-105 transition whitespace-nowrap cursor-pointer shrink-0 ml-4 hover:scale-102"
             >
               <span>Close</span>
             </button>
           </div>
 
-          <div className="grid md:grid-cols-12 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* Side stats & Actions */}
-          <div className="md:col-span-4 space-y-4">
-            <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-xs p-5 space-y-4 text-xs">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <h4 className="font-extrabold text-slate-950 dark:text-white flex items-center space-x-1.5">
-                  <Sparkles className="w-4 h-4 text-tiffany-500" />
-                  <span>Document Details</span>
-                </h4>
-              </div>
-
-              {/* Extraction Metadata Form */}
-              <div className="space-y-3.5">
-                <div>
-                  <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">SUBJECT / SUBJECT SUBJECT</span>
-                  <p className="font-bold text-slate-900 dark:text-white mt-0.5">{activeDocument.title || "Untitled"}</p>
+            {/* Side stats & Actions */}
+            <div className="lg:col-span-12 space-y-4 order-2 block">
+              <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm p-5 space-y-4 text-xs transition-all duration-300">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <h4 className="font-extrabold text-slate-950 dark:text-white flex items-center space-x-1.5">
+                    <Sparkles className="w-4 h-4 text-tiffany-500" />
+                    <span>{isEditing ? "Edit Metadata / ປັບປຸງຂໍ້ມູນ" : "Document Details / ຂໍ້ມູນເອກະສານ"}</span>
+                  </h4>
+                  {isEditing && (
+                    <span className="text-[10px] bg-indigo-50 dark:bg-indigo-950 text-indigo-650 dark:text-indigo-400 px-2 py-0.5 rounded font-bold tracking-wide uppercase animate-pulse">
+                      Edit Mode
+                    </span>
+                  )}
                 </div>
 
-                {activeDocument.referenceNo && (
-                  <div>
-                    <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">ADMIN REFERENCE NO</span>
-                    <p className="font-mono font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{activeDocument.referenceNo}</p>
-                  </div>
-                )}
+                {/* Extraction Metadata Form & Inputs */}
+                <div className="space-y-4">
+                  {isEditing ? (
+                    <>
+                      <div className="space-y-1">
+                        <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Document Title / Subject</label>
+                        <input
+                          type="text"
+                          value={editedTitle}
+                          onChange={(e) => setEditedTitle(e.target.value)}
+                          className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                          placeholder="Untitled document"
+                        />
+                      </div>
 
-                {activeDocument.referenceDate && (
-                  <div>
-                    <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">LETTER DATE</span>
-                    <p className="font-mono text-slate-800 dark:text-slate-200 mt-0.5">{activeDocument.referenceDate}</p>
-                  </div>
-                )}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Ref Number</label>
+                          <input
+                            type="text"
+                            value={editedRefNo}
+                            onChange={(e) => setEditedRefNo(e.target.value)}
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            placeholder="e.g. 102/ກະຊວງ"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Letter Date</label>
+                          <input
+                            type="text"
+                            value={editedRefDate}
+                            onChange={(e) => setEditedRefDate(e.target.value)}
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            placeholder="e.g. 15.05.2026"
+                          />
+                        </div>
+                      </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">SENDER</span>
-                    <p className="font-semibold text-slate-700 dark:text-slate-300 mt-0.5 truncate">{activeDocument.sender || "-"}</p>
-                  </div>
-                  <div>
-                    <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">RECIPIENT</span>
-                    <p className="font-semibold text-slate-700 dark:text-slate-300 mt-0.5 truncate">{activeDocument.receiver || "-"}</p>
-                  </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Sender Department</label>
+                          <input
+                            type="text"
+                            value={editedSender}
+                            onChange={(e) => setEditedSender(e.target.value)}
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            placeholder="Primary Sender"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">Recipient Agency</label>
+                          <input
+                            type="text"
+                            value={editedReceiver}
+                            onChange={(e) => setEditedReceiver(e.target.value)}
+                            className="w-full text-xs font-semibold bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-900 dark:text-white"
+                            placeholder="Primary Recipient"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-xxs font-mono text-slate-400 font-bold uppercase tracking-wider">AI Summary Note</label>
+                        <textarea
+                          rows={4}
+                          value={editedSummary}
+                          onChange={(e) => setEditedSummary(e.target.value)}
+                          className="w-full text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-250 dark:border-slate-700 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500 focus:outline-none focus:bg-white text-slate-950 dark:text-white font-serif italic"
+                          placeholder="Write executive summary here..."
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">SUBJECT / ຫົວຂໍ້ເອກະສານ</span>
+                        <p className="font-bold text-slate-900 dark:text-white mt-0.5 text-xs sm:text-sm">{editedTitle || "Untitled"}</p>
+                      </div>
+
+                      {editedRefNo && (
+                        <div>
+                          <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">ADMIN REFERENCE NO</span>
+                          <p className="font-mono font-semibold text-slate-850 dark:text-slate-200 mt-0.5">{editedRefNo}</p>
+                        </div>
+                      )}
+
+                      {editedRefDate && (
+                        <div>
+                          <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">LETTER DATE</span>
+                          <p className="font-mono text-slate-850 dark:text-slate-200 mt-0.5">{editedRefDate}</p>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">SENDER</span>
+                          <p className="font-semibold text-slate-700 dark:text-slate-300 mt-0.5 truncate">{editedSender || "-"}</p>
+                        </div>
+                        <div>
+                          <span className="block text-xxs font-mono text-slate-400 font-bold uppercase">RECIPIENT</span>
+                          <p className="font-semibold text-slate-700 dark:text-slate-300 mt-0.5 truncate">{editedReceiver || "-"}</p>
+                        </div>
+                      </div>
+
+                      {editedSummary && (
+                        <div className="p-3 bg-slate-50 dark:bg-slate-850 border border-slate-150 dark:border-slate-800 rounded-lg">
+                          <span className="block text-xxs font-mono text-tiffany-600 dark:text-tiffany-450 font-bold uppercase">AI SUMMARY OVERVIEW</span>
+                          <p className="text-slate-650 dark:text-slate-300 mt-1 italic leading-relaxed text-[11px] font-serif">{editedSummary}</p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
-
-                {activeDocument.summary && (
-                  <div className="p-3 bg-slate-50 dark:bg-slate-850 border border-slate-100 dark:border-slate-800 rounded-lg">
-                    <span className="block text-xxs font-mono text-tiffany-600 dark:text-tiffany-450 font-bold uppercase">AI SUMMARY OVERVIEW</span>
-                    <p className="text-slate-650 dark:text-slate-300 mt-1 italic leading-relaxed text-[11px]">{activeDocument.summary}</p>
-                  </div>
-                )}
               </div>
             </div>
-          </div>
 
-          {/* Render HTML Document Area */}
-          <div className="md:col-span-8 flex flex-col h-full bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden min-h-[500px]">
-            {/* Simulation Header Header */}
-            <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-800/50">
-              <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 rounded-full bg-red-400"></span>
-                <span className="w-3 h-3 rounded-full bg-amber-400"></span>
-                <span className="w-3 h-3 rounded-full bg-emerald-400"></span>
-                <span className="text-[10px] text-slate-400 font-mono pl-2">Lao Formal Letter Digital Blueprint render</span>
-              </div>
-              <span className="text-[11px] font-mono text-indigo-700 font-bold">Standard Phetsarath OT / Times Roman Font</span>
-            </div>
-
-            {/* Document Body Wrapper */}
-            <div className="p-6 sm:p-8 overflow-y-auto bg-slate-50/50 flex-1 flex justify-center items-start">
-              <div 
-                className="gov-letter-preview w-full max-w-2xl bg-white border border-slate-200/60 shadow-md p-8 sm:p-12 text-slate-900 rounded-sm relative selection:bg-slate-200"
-                id="digital-letter-output"
-              >
-                {/* Government Official emblem visual indicator placeholder */}
-                <div className="absolute top-2.5 left-0 right-0 flex justify-center text-[9px] text-slate-350 tracking-widest font-mono uppercase">
-                  Motto-Header Enforced (Phetsarath / Times New Roman)
+            {/* Render HTML Document Area */}
+            <div className="lg:col-span-12 order-1 flex flex-col h-full bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 shadow-inner overflow-hidden min-h-[900px]">
+              {/* Simulation Header Header */}
+              <div className="px-5 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between shrink-0 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm">
+                <div className="flex items-center space-x-2">
+                  <span className="w-3 h-3 rounded-full bg-red-400 shadow-xs"></span>
+                  <span className="w-3 h-3 rounded-full bg-amber-400 shadow-xs"></span>
+                  <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-xs"></span>
+                  <span className="text-[10px] text-slate-500 font-mono pl-2">A4 Layout Preview (.DOCX Export Equivalent)</span>
                 </div>
+                <span className="text-[11px] font-mono text-tiffany-600 font-bold bg-tiffany-50 dark:bg-tiffany-500/10 px-2 py-1 rounded">Standard Phetsarath / Times Roman</span>
+              </div>
+
+              {/* Document Body Wrapper - Scrollable Editor Pane */}
+              <div className="p-4 sm:p-6 lg:p-8 overflow-y-auto bg-slate-200/50 dark:bg-slate-900 flex-1 flex flex-col justify-start items-center">
+                {isEditing && (
+                  <div className="w-full max-w-[850px] mb-4 p-3.5 bg-indigo-50 border border-indigo-200 text-indigo-700 dark:bg-indigo-950/40 dark:border-indigo-800 dark:text-indigo-300 text-xs rounded-xl flex items-center gap-2.5 shadow-sm transform transition duration-300">
+                    <Edit className="w-4 h-4 text-indigo-500 dark:text-indigo-400 animate-bounce shrink-0" />
+                    <span><strong>ໂໝດແກ້ໄຂເປີດຢູ່:</strong> ທ່ານສາມາດຄລິກໃສ່ຂໍ້ຄວາມພາຍໃນເຈ້ຍ A4 ດ້ານລຸ່ມນີ້ເພື່ອປ່ຽນແປງ ຫຼື ພິມຂໍ້ຄວາມໃຫມ່ໄດ້ທັນທີ. / <strong>Edit mode active:</strong> Click anywhere inside the text document on the sheet below to edit or reformat.</span>
+                  </div>
+                )}
 
                 <div 
-                  dangerouslySetInnerHTML={{ __html: activeDocument.convertedText || "" }}
-                />
+                  className="gov-letter-preview w-full max-w-[850px] min-h-[1100px] bg-white dark:bg-slate-900 border border-slate-300/80 dark:border-slate-700 shadow-xl sm:shadow-2xl rounded-sm p-10 sm:p-14 lg:p-16 text-slate-900 dark:text-slate-100 relative selection:bg-indigo-200 dark:selection:bg-indigo-800/80 shrink-0 ring-1 ring-slate-900/5 transition-all"
+                  id="digital-letter-output"
+                >
+                  {/* Government Official emblem visual indicator placeholder */}
+                  <div className="absolute top-4 left-0 right-0 flex justify-center text-[9px] text-slate-300 tracking-widest font-mono uppercase select-none">
+                    A4 Formal Layout Boundary
+                  </div>
+
+                  <div 
+                    contentEditable={isEditing}
+                    suppressContentEditableWarning={true}
+                    onBlur={(e) => {
+                      setEditedHtml(e.currentTarget.innerHTML);
+                    }}
+                    dangerouslySetInnerHTML={{ __html: editedHtml || activeDocument.convertedText || "" }}
+                    className={`pt-4 text-[13px] sm:text-sm font-lao leading-loose outline-none focus:outline-none w-full min-h-[960px] ${
+                      isEditing ? "border border-dashed border-indigo-300 dark:border-indigo-750 p-4 rounded bg-indigo-50/5" : ""
+                    }`}
+                  />
+                </div>
               </div>
             </div>
-          </div>
 
-        </div>
+          </div>
         </div>
       )}
     </div>

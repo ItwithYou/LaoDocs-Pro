@@ -1,6 +1,6 @@
 import { SUBSCRIPTION_PLANS, SubscriptionPlan, UserProfile, PaymentSettings } from "../types";
-import { db, handleFirestoreError, OperationType } from "../firebase";
-import { doc, updateDoc, serverTimestamp, getDoc, setDoc, query, collection, where, getDocs } from "firebase/firestore";
+import { db, handleFirestoreError, OperationType, safeGetDoc, safeGetDocs, safeSetDoc, safeUpdateDoc } from "../firebase";
+import { doc, serverTimestamp, query, collection, where } from "firebase/firestore";
 import { useState, useEffect } from "react";
 import { Check, CreditCard, Sparkles, X, Shield, Award, Upload } from "lucide-react";
 
@@ -26,7 +26,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
     const fetchSettings = async () => {
       try {
         const docRef = doc(db, "settings", "general");
-        const docSnap = await getDoc(docRef);
+        const docSnap = await safeGetDoc(docRef);
         if (docSnap.exists()) {
           setBankQrUrlPro(docSnap.data().bankQrUrlPro || docSnap.data().bankQrUrl || null);
           setBankQrUrlUltra(docSnap.data().bankQrUrlUltra || docSnap.data().bankQrUrl || null);
@@ -43,7 +43,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
     setIsProcessing(true);
     try {
       const q = query(collection(db, "subscriptionRequests"), where("userId", "==", userProfile.userId), where("status", "==", "pending"));
-      const snap = await getDocs(q);
+      const snap = await safeGetDocs(q);
       if (!snap.empty) {
         alert("You already have a pending request. Please wait for admin approval.");
         setIsProcessing(false);
@@ -52,7 +52,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
       
       const reqId = "req_" + Math.random().toString(36).substring(2, 11);
       const reqRef = doc(db, "subscriptionRequests", reqId);
-      await setDoc(reqRef, {
+      await safeSetDoc(reqRef, {
         id: reqId,
         userId: userProfile.userId,
         email: userProfile.email,
@@ -77,7 +77,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
     setIsProcessing(true);
     try {
       const userRef = doc(db, "users", userProfile.userId);
-      await updateDoc(userRef, {
+      await safeUpdateDoc(userRef, {
         subscriptionTier: planId,
         updatedAt: serverTimestamp(),
       });
@@ -95,19 +95,19 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
 
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 overflow-y-auto" id="pricing-modal-overlay">
-      <div className="bg-white rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 flex flex-col max-h-[90vh]">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh]">
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-150 flex items-center justify-between">
+        <div className="px-6 py-4 border-b border-slate-150 dark:border-slate-800 flex items-center justify-between">
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-950 flex items-center space-x-2">
-              <Sparkles className="w-5 h-5 text-indigo-600 animate-pulse" />
+            <h2 className="text-lg sm:text-xl font-bold text-slate-950 dark:text-white flex items-center space-x-2">
+              <Sparkles className="w-5 h-5 text-indigo-600 dark:text-indigo-400 animate-pulse" />
               <span>ລາຄາ ແລະ ສະໝັກບໍລິການ / Pricing & Subscriptions</span>
             </h2>
-            <p className="text-xs text-slate-500">Unleash powerful PDF-to-Word & font conversions for Lao official letters</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Unleash powerful PDF-to-Word & font conversions for Lao official letters</p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-slate-800 transition cursor-pointer"
+            className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-slate-300 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -188,39 +188,39 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
             </div>
           ) : (
             /* Mock Billing / Card Payment UI or Bank QR */
-            <div className="max-w-md mx-auto bg-slate-50 border border-slate-100 rounded-2xl p-6">
+            <div className="max-w-md mx-auto bg-slate-50 dark:bg-slate-800/30 border border-slate-100 dark:border-slate-800 rounded-2xl p-6">
               <div className="flex items-center space-x-3 mb-6">
-                <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-lg flex items-center justify-center">
                   {(selectedPlan?.id === "ultra" ? bankQrUrlUltra : bankQrUrlPro) ? <Award className="w-5 h-5" /> : <CreditCard className="w-5 h-5" />}
                 </div>
                 <div>
-                  <h3 className="font-bold text-slate-900">Secure Upgrade Payment</h3>
-                  <p className="text-xxs text-slate-500">
+                  <h3 className="font-bold text-slate-900 dark:text-white">Secure Upgrade Payment</h3>
+                  <p className="text-xxs text-slate-500 dark:text-slate-400">
                     {(selectedPlan?.id === "ultra" ? bankQrUrlUltra : bankQrUrlPro) ? "Scan the QR code to upgrade" : "Fast simulated stripe checkout portal"}
                   </p>
                 </div>
               </div>
 
               {/* Order summary */}
-              <div className="bg-white rounded-lg p-4 border border-slate-100 mb-6 flex justify-between items-center">
+              <div className="bg-white dark:bg-slate-800 rounded-lg p-4 border border-slate-100 dark:border-slate-700 mb-6 flex justify-between items-center">
                 <div>
-                  <p className="text-xs font-bold text-slate-800">{selectedPlan.name}</p>
-                  <p className="text-xxs text-indigo-600">Max OCR capacity: {selectedPlan.maxTokensPerOcr.toLocaleString()} tokens</p>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">{selectedPlan.name}</p>
+                  <p className="text-xxs text-indigo-600 dark:text-indigo-400">Max OCR capacity: {selectedPlan.maxTokensPerOcr.toLocaleString()} tokens</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-base font-black text-slate-900">${selectedPlan.priceUSD}</p>
+                  <p className="text-base font-black text-slate-900 dark:text-white">${selectedPlan.priceUSD}</p>
                   <p className="text-[10px] text-slate-400">/{selectedPlan.period}</p>
                 </div>
               </div>
 
               {((selectedPlan?.id === "ultra" ? bankQrUrlUltra : bankQrUrlPro)) ? (
-                <div className="mb-6 flex flex-col items-center bg-white p-4 rounded-xl border border-slate-200">
-                  <p className="text-sm font-semibold mb-3 text-slate-800 text-center">Scan to Pay via BCEL One / Bank QR</p>
+                <div className="mb-6 flex flex-col items-center bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+                  <p className="text-sm font-semibold mb-3 text-slate-800 dark:text-slate-200 text-center">Scan to Pay via BCEL One / Bank QR</p>
                   <img src={((selectedPlan?.id === "ultra" ? bankQrUrlUltra : bankQrUrlPro)) as string} alt="Bank QR Code" className="w-48 h-48 rounded-lg shadow-sm mb-4" />
-                  <p className="text-xs text-slate-500 text-center mb-4">Please scan the QR code and upload your payment receipt below.</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 text-center mb-4">Please scan the QR code and upload your payment receipt below.</p>
                   
-                  <div className="w-full relative border-2 border-dashed border-indigo-100 bg-indigo-50/30 rounded-lg p-3 flex flex-col items-center">
-                     <span className="text-xs text-indigo-700 font-semibold mb-2">Upload Slip (PNG/JPG)</span>
+                  <div className="w-full relative border-2 border-dashed border-indigo-100 dark:border-indigo-800/50 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-lg p-3 flex flex-col items-center">
+                     <span className="text-xs text-indigo-700 dark:text-indigo-400 font-semibold mb-2">Upload Slip (PNG/JPG)</span>
                      <input type="file" accept="image/*" onChange={(e) => {
                        const f = e.target.files?.[0];
                        if (f) {
@@ -230,52 +230,52 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                          };
                          reader.readAsDataURL(f);
                        }
-                     }} className="text-[10px] file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 w-full" />
-                     {slipBase64 && <p className="text-[10px] text-emerald-600 font-bold mt-2">✅ Slip attached</p>}
+                     }} className="text-[10px] file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-[10px] file:font-semibold file:bg-indigo-100 file:text-indigo-700 dark:file:bg-indigo-900/50 dark:file:text-indigo-300 hover:file:bg-indigo-200 dark:hover:file:bg-indigo-800/50 w-full dark:text-slate-300" />
+                     {slipBase64 && <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold mt-2">✅ Slip attached</p>}
                   </div>
                 </div>
               ) : (
                 /* Input forms for simulated credit card */
                 <div className="space-y-4 text-xs mb-6">
                   <div>
-                    <label className="block text-slate-600 font-semibold mb-1">NAME ON CARD</label>
+                    <label className="block text-slate-600 dark:text-slate-400 font-semibold mb-1">NAME ON CARD</label>
                     <input
                       type="text"
                       value={cardName}
                       onChange={(e) => setCardName(e.target.value.toUpperCase())}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-600 font-semibold mb-1">CARD NUMBER</label>
+                    <label className="block text-slate-600 dark:text-slate-400 font-semibold mb-1">CARD NUMBER</label>
                     <input
                       type="text"
                       value={cardNo}
                       onChange={(e) => setCardNo(e.target.value)}
-                      className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-indigo-500"
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-slate-600 font-semibold mb-1">EXPIRATION</label>
+                      <label className="block text-slate-600 dark:text-slate-400 font-semibold mb-1">EXPIRATION</label>
                       <input
                         type="text"
                         value={expiry}
                         onChange={(e) => setExpiry(e.target.value)}
                         placeholder="MM/YY"
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 font-mono tracking-wider text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 font-mono tracking-wider text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
                     <div>
-                      <label className="block text-slate-600 font-semibold mb-1">CVC CODE</label>
+                      <label className="block text-slate-600 dark:text-slate-400 font-semibold mb-1">CVC CODE</label>
                       <input
                         type="password"
                         value={cvc}
                         onChange={(e) => setCvc(e.target.value)}
                         maxLength={3}
-                        className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-800 font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-800 dark:text-slate-200 font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
                       />
                     </div>
                   </div>
@@ -283,8 +283,8 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
               )}
 
               {/* Disclaimer */}
-              <div className="text-[10px] text-slate-400 mb-6 flex items-start space-x-1.5">
-                <Shield className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+              <div className="text-[10px] text-slate-400 dark:text-slate-500 mb-6 flex items-start space-x-1.5">
+                <Shield className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0 mt-0.5" />
                 <span>{(selectedPlan?.id === "ultra" ? bankQrUrlUltra : bankQrUrlPro) ? "After payment, admin will manually upgrade your tier shortly." : "By subscribing, you authorise simulated charges. You can cancel, downgrade or upgrade your plan at any instant. Securely bound via 256-bit SSL encryption."}</span>
               </div>
 
@@ -292,7 +292,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
               <div className="flex space-x-3">
                 <button
                   onClick={() => setSelectedPlan(null)}
-                  className="flex-1 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 py-2 rounded-lg font-medium text-xs transition"
+                  className="flex-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 py-2 rounded-lg font-medium text-xs transition transition-colors"
                   disabled={isProcessing}
                 >
                    Back

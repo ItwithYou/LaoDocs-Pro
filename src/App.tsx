@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { onAuthStateChanged, signOut, getRedirectResult } from "firebase/auth";
-import { doc, getDoc, setDoc, collection, query, where, getDocs, orderBy, serverTimestamp } from "firebase/firestore";
-import { auth, db, handleFirestoreError, OperationType, loginWithGoogle } from "./firebase";
+import { doc, collection, query, where, orderBy, serverTimestamp } from "firebase/firestore";
+import { auth, db, handleFirestoreError, OperationType, loginWithGoogle, safeGetDoc, safeSetDoc, safeGetDocs, getOfflineMode, setOfflineMode } from "./firebase";
 import { UserProfile, LaoLetterDocument } from "./types";
 import { ThemeContext, LanguageContext } from "./contexts";
 import Navbar from "./components/Navbar";
@@ -25,17 +25,36 @@ export default function App() {
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  const [isDark, setIsDark] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark' | 'soft-blue' | 'warm-clay' | 'fresh-mint'>(() => {
+    const saved = localStorage.getItem("lao-docs-theme");
+    return (saved === "dark" || saved === "soft-blue" || saved === "warm-clay" || saved === "fresh-mint") ? (saved as any) : "light";
+  });
   const [isLao, setIsLao] = useState(true);
+  const [isOfflineDevice, setIsOfflineDevice] = useState(getOfflineMode());
+
+  // Listen to offline mode change event from firebase.ts
+  useEffect(() => {
+    const handleOfflineChange = (e: any) => {
+      setIsOfflineDevice(e.detail);
+    };
+    window.addEventListener("lao_docs_offline_change", handleOfflineChange);
+    return () => window.removeEventListener("lao_docs_offline_change", handleOfflineChange);
+  }, []);
 
   // Sync theme
   useEffect(() => {
-    if (isDark) {
+    document.documentElement.classList.remove('dark', 'soft-blue', 'warm-clay', 'fresh-mint');
+    if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    } else if (theme === 'soft-blue') {
+      document.documentElement.classList.add('soft-blue');
+    } else if (theme === 'warm-clay') {
+      document.documentElement.classList.add('warm-clay');
+    } else if (theme === 'fresh-mint') {
+      document.documentElement.classList.add('fresh-mint');
     }
-  }, [isDark]);
+    localStorage.setItem("lao-docs-theme", theme);
+  }, [theme]);
 
   // Synchronize Google Authentication events
   useEffect(() => {
@@ -69,23 +88,25 @@ export default function App() {
   const handleUserProfileSync = async (user: any) => {
     try {
       const userRef = doc(db, "users", user.uid);
-      const snap = await getDoc(userRef);
+      const snap = await safeGetDoc(userRef);
 
       let profileData: UserProfile;
+      const isAdminUid = user.uid === "zVEwrk4m8XNueS0HiNRDIgMHwWm2";
+      const isAdminEmail = user.email?.toLowerCase() === "norecord88@gmail.com";
+      const isSystemAdmin = isAdminUid || isAdminEmail;
 
       if (!snap.exists()) {
-        const isAdmin = user.email?.toLowerCase() === "norecord88@gmail.com";
         profileData = {
           userId: user.uid,
           email: user.email || "",
           displayName: user.displayName || "Lao Business Partner",
-          subscriptionTier: isAdmin ? "ultra" : "free",
-          role: isAdmin ? "admin" : "user",
+          subscriptionTier: isSystemAdmin ? "ultra" : "free",
+          role: isSystemAdmin ? "admin" : "user",
           createdAt: new Date(),
           profilePhoto: user.photoURL || "",
           birthday: "",
         };
-        await setDoc(userRef, {
+        await safeSetDoc(userRef, {
           ...profileData,
           createdAt: serverTimestamp(),
         });
@@ -95,12 +116,20 @@ export default function App() {
           userId: data.userId,
           email: data.email || user.email || "",
           displayName: data.displayName || user.displayName || "Lao Business Partner",
-          subscriptionTier: data.subscriptionTier || "free",
-          role: data.role || "user",
+          subscriptionTier: isSystemAdmin ? "ultra" : (data.subscriptionTier || "free"),
+          role: isSystemAdmin ? "admin" : (data.role || "user"),
           createdAt: data.createdAt || new Date(),
           birthday: data.birthday || "",
           profilePhoto: data.profilePhoto || user.photoURL || "",
         };
+        // Update database if the database values are stale for the admin
+        if (isSystemAdmin && (data.role !== "admin" || data.subscriptionTier !== "ultra")) {
+          const { safeUpdateDoc } = await import("./firebase");
+          await safeUpdateDoc(userRef, {
+            role: "admin",
+            subscriptionTier: "ultra"
+          });
+        }
       }
 
       setUserProfile(profileData);
@@ -121,7 +150,7 @@ export default function App() {
         where("ownerId", "==", uid),
         orderBy("createdAt", "desc")
       );
-      const snap = await getDocs(q);
+      const snap = await safeGetDocs(q);
       const docsList: LaoLetterDocument[] = [];
       
       snap.forEach((d) => {
@@ -166,21 +195,20 @@ export default function App() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center" id="app-loading-screen">
+      <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col justify-center items-center" id="app-loading-screen">
         <div className="relative mb-6">
-          <div className="w-16 h-16 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin" />
-          <FileText className="w-6 h-6 text-indigo-600 absolute inset-0 m-auto animate-pulse" />
+          <div className="w-16 h-16 border-4 border-slate-200 dark:border-slate-700 border-t-tiffany-500 rounded-full animate-spin" />
+          <FileText className="w-6 h-6 text-tiffany-500 absolute inset-0 m-auto animate-pulse" />
         </div>
-        <p className="text-xs font-bold text-slate-800">ກຳລັງໂຫຼດຂໍ້ມູນລະບົບ... / Syncing Portal State</p>
-        <p className="text-xxs text-slate-450 mt-1.5 font-mono">Secured Handshake via TLS 1.3</p>
+        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 tracking-wide font-sans">LaoDocs Pro loading....</p>
       </div>
     );
   }
 
   return (
-    <ThemeContext.Provider value={{ isDark, toggleDark: () => setIsDark(!isDark) }}>
+    <ThemeContext.Provider value={{ theme, setTheme }}>
       <LanguageContext.Provider value={{ isLao, toggleLanguage: () => setIsLao(!isLao) }}>
-        <div className={`min-h-screen bg-blue-50/30 dark:bg-slate-900 transition-colors flex flex-col ${isDark ? 'dark' : ''}`} id="app-dashboard-wrapper">
+        <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-300" id="app-dashboard-wrapper">
           {/* Navigation */}
       <Navbar
         userProfile={userProfile}
@@ -200,59 +228,83 @@ export default function App() {
       {/* Main Subordinate Container Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col space-y-6">
         
-        {/* Dynamic Bento workspace grid */}
-        <div className="flex flex-col lg:flex-row gap-8 items-start flex-1">
-          {/* Main Workspace - Interactive OCR & Font Conversion panel */}
-          <section className="w-full lg:w-7/12 xl:w-8/12 space-y-6">
-            <div className="flex items-center justify-between pb-1">
-              <div>
-                <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
-                  <Sparkles className="w-4 h-4 text-tiffany-500" />
-                  <span>{isLao ? 'ຫ້ອງເຮັດວຽກຕົວແປງເອກະສານ' : 'Conversion Workspace'}</span>
-                </h3>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {isLao ? 'ປ່ຽນຮູບພາບໃຫ້ເປັນຂໍ້ຄວາມພ້ອມທັງແປງຟອນເຂົ້າສູ່ລະບົບມາດຕະຖານ' : 'Transform screenshots to editable text under standard Lao administrative rules'}
-                </p>
-              </div>
-            </div>
-
-            <DocumentConverter
-              userProfile={userProfile}
-              documents={documents}
-              onDocumentSaved={() => userProfile && fetchUserDocuments(userProfile.userId)}
-              selectedDocument={selectedDocument}
-              onClearSelected={() => setSelectedDocument(null)}
-              onRequireLogin={handleGoogleLoginDirect}
-              onUpgradeClick={() => setIsSubscriptionModalOpen(true)}
-            />
-          </section>
-
-          {/* Side partition - Document Tracker Cabinet */}
-          <section className="w-full lg:w-5/12 xl:w-4/12 lg:sticky lg:top-20 lg:max-h-[calc(100vh-8rem)]">
-            <DocumentTracker
-              documents={documents}
-              onSelectDocument={(docItem) => setSelectedDocument(docItem)}
-              selectedDocId={selectedDocument?.documentId || null}
-              onRefresh={() => userProfile && fetchUserDocuments(userProfile.userId)}
-            />
-          </section>
-        </div>
-
-        {/* Statistics & Quick Onboarding Banner */}
-        <div className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-3xl p-6 relative overflow-hidden shadow-xs border border-slate-200 dark:border-slate-800">
-          <div className="absolute top-0 right-0 w-80 h-80 bg-tiffany-500/5 dark:bg-tiffany-500/10 rounded-full filter blur-3xl translate-x-24 -translate-y-24 shrink-0" />
-          
-          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-            <div className="space-y-1.5">
-              <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] bg-tiffany-50 dark:bg-tiffany-500/10 border border-tiffany-100 dark:border-white/5 text-tiffany-600 dark:text-tiffany-400 font-mono font-medium tracking-wider">
-                ● Private Security Documents
+        {isOfflineDevice && (
+          <div className="p-4 bg-amber-500/10 border border-amber-500/20 text-amber-900 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-2 text-xs sm:text-sm">
+              <span className="animate-ping inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 shrink-0"></span>
+              <span className="font-semibold text-slate-800">
+                {isLao 
+                  ? "ໂໝດອອຟລາຍເຮັດວຽກຢູ່ (Offline Safe Mode Active) • ເຮັດວຽກ ແລະ ບັນທຶກຂໍ້ມູນໃນເຄື່ອງຂອງທ່ານໂດຍອັດຕະໂນມັດ" 
+                  : "Offline Safe Mode active • Progress is automatically saved locally to your browser."}
               </span>
-              <p className="text-xs text-slate-600 dark:text-slate-350 max-w-xl leading-relaxed">
+            </div>
+            <button 
+              onClick={() => {
+                setOfflineMode(false);
+                window.location.reload();
+              }}
+              className="text-amber-800 hover:text-amber-950 font-bold text-xs underline cursor-pointer"
+            >
+              {isLao ? "ລອງເຊື່ອມຕໍ່ໃໝ່" : "Retry Connection"}
+            </button>
+          </div>
+        )}
+
+        {/* Dynamic Bento workspace grid / Admin Workspace */}
+        {userProfile?.role === "admin" || userProfile?.userId === "zVEwrk4m8XNueS0HiNRDIgMHwWm2" ? (
+          <div className="w-full flex-1">
+            <AdminDashboard inline={true} />
+          </div>
+        ) : (
+          <div className="flex flex-col lg:flex-row gap-8 items-start flex-1">
+            {/* Main Workspace - Interactive OCR & Font Conversion panel */}
+            <section className="w-full lg:w-7.5/12 xl:w-8/12 space-y-6">
+              <div className="flex items-center justify-between pb-1">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+                    <Sparkles className="w-4 h-4 text-tiffany-500" />
+                    <span>{isLao ? 'ຫ້ອງເຮັດວຽກຕົວແປງເອກະສານ' : 'Conversion Workspace'}</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {isLao ? 'ປ່ຽນຮູບພາບໃຫ້ເປັນຂໍ້ຄວາມພ້ອມທັງແປງຟອນເຂົ້າສູ່ລະບົບມາດຕະຖານ' : 'Transform screenshots to editable text under standard Lao administrative rules'}
+                  </p>
+                </div>
+              </div>
+
+              <DocumentConverter
+                userProfile={userProfile}
+                documents={documents}
+                onDocumentSaved={() => userProfile && fetchUserDocuments(userProfile.userId)}
+                selectedDocument={selectedDocument}
+                onClearSelected={() => setSelectedDocument(null)}
+                onRequireLogin={handleGoogleLoginDirect}
+                onUpgradeClick={() => setIsSubscriptionModalOpen(true)}
+              />
+            </section>
+
+            {/* Side partition - Document Tracker Cabinet */}
+            <section className="w-full lg:w-4.5/12 xl:w-4/12 lg:sticky lg:top-20 lg:max-h-[calc(100vh-8rem)]">
+              <DocumentTracker
+                documents={documents}
+                onSelectDocument={(docItem) => setSelectedDocument(docItem)}
+                selectedDocId={selectedDocument?.documentId || null}
+                onRefresh={() => userProfile && fetchUserDocuments(userProfile.userId)}
+              />
+            </section>
+          </div>
+        )}
+
+        {/* Floating Bottom Note Bar */}
+        <div className="w-full mt-auto py-2.5 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md rounded-b-2xl sm:rounded-2xl border-t sm:border border-slate-200/80 dark:border-slate-800/80 shadow-xs flex flex-col justify-center overflow-hidden">
+          <div className="relative w-full overflow-hidden flex items-center h-6">
+            <div className="animate-marquee flex items-center gap-2 absolute">
+              <span className="inline-flex w-1.5 h-1.5 rounded-full bg-teal-500 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] shrink-0" />
+              <span className="text-[11px] sm:text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                 {isLao ? 
-                  "LaoDoc ຈັດການເອກະສານທາງການ, ແປງໄຟລ໌ຮູບພາບ/PDF ເປັນຂໍ້ຄວາມ (OCR), ແລະ ແປງຟອນເກົ່າ Saysettha ໃຫ້ເປັນ Phetsarath OT ມາດຕະຖານ." :
-                  "LaoDoc manages formal letter archives, OCR translates scanner files, and sanitizes Saysettha ASCII layout structures into clean Unicode Phetsarath OT letters."
+                  "LaoDocs Pro ຊ່ວຍທ່ານຈັດການເອກະສານທາງການ, ແປງໄຟລ໌ຮູບພາບ/PDF ເປັນຂໍ້ຄວາມ (OCR), ແລະ ແປງຟອນເກົ່າໃຫ້ເປັນ Phetsarath OT ຕາມມາດຕະຖານ ໂດຍທ່ານບໍ່ຕ້ອງໄດ້ພີມຄືເມື່ອກ່ອນແລ້ວ." :
+                  "LaoDocs Pro helps you manage official documents, convert image/PDF files to text (OCR), and convert legacy fonts to standard Phetsarath OT without manual typing."
                 }
-              </p>
+              </span>
             </div>
           </div>
         </div>

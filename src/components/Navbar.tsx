@@ -1,7 +1,7 @@
 import { auth } from "../firebase";
 import { UserProfile } from "../types";
 import { useLanguage, useTheme } from "../contexts";
-import { FileText, LogOut, Moon, Sun, Languages, User, Sparkles, ShieldCheck } from "lucide-react";
+import { FileText, LogOut, Moon, Sun, Languages, User, Sparkles, ShieldCheck, Droplet, Palette } from "lucide-react";
 
 interface NavbarProps {
   userProfile: UserProfile | null;
@@ -13,7 +13,7 @@ interface NavbarProps {
 }
 
 export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginClick, onAdminClick, onProfileClick }: NavbarProps) {
-  const { isDark, toggleDark } = useTheme();
+  const { theme, setTheme } = useTheme();
   const { isLao, toggleLanguage } = useLanguage();
   const getBadgeStyle = (tier: string) => {
     switch (tier) {
@@ -47,7 +47,8 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
           </div>
           <div>
             <h1 className="font-sans font-bold text-base sm:text-lg tracking-tight flex items-center space-x-2">
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate">LaoDocs Pro</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate hidden sm:inline-block">LaoDocs Pro</span>
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate sm:hidden">LaoDocs</span>
               <span className="hidden sm:inline-block text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">
                 {isLao ? 'ໝວດເອກະສານ' : 'Document Pro'}
               </span>
@@ -68,21 +69,31 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
           </button>
           
           <button
-            onClick={toggleDark}
-            className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition cursor-pointer"
+            onClick={() => {
+              if (theme === 'light') setTheme('dark');
+              else if (theme === 'dark') setTheme('soft-blue');
+              else if (theme === 'soft-blue') setTheme('warm-clay');
+              else if (theme === 'warm-clay') setTheme('fresh-mint');
+              else setTheme('light');
+            }}
+            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition cursor-pointer"
             title="Toggle Theme"
           >
-            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            {theme === 'light' && <Moon className="w-4 h-4 text-slate-600" />}
+            {theme === 'dark' && <Moon className="w-4 h-4 text-slate-400 fill-current" />}
+            {theme === 'soft-blue' && <Palette className="w-4 h-4 text-tiffany-600" />}
+            {theme === 'warm-clay' && <Sun className="w-4 h-4 text-tiffany-500" />}
+            {theme === 'fresh-mint' && <Droplet className="w-4 h-4 text-tiffany-500" />}
           </button>
 
           <div className="h-6 w-[1px] bg-slate-200 dark:bg-slate-700"></div>
 
           {/* Subscription Badge */}
-          <div className="hidden sm:flex items-center space-x-2">
+          <div className="flex items-center space-x-1 sm:space-x-2">
             {(userProfile?.email?.toLowerCase() === "norecord88@gmail.com" || userProfile?.role === "admin") && (
               <button
                 onClick={onAdminClick}
-                className="flex items-center px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-full h-8 hover:bg-red-100 transition shadow-xs cursor-pointer select-none"
+                className="hidden sm:flex items-center px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-full h-8 hover:bg-red-100 transition shadow-xs cursor-pointer select-none"
                 title="Admin Dashboard"
               >
                 <ShieldCheck className="w-3.5 h-3.5 mr-1" />
@@ -90,7 +101,7 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
               </button>
             )}
             
-            <div className="flex items-center px-3 py-1 bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-800 rounded-full h-8">
+            <div className="hidden sm:flex items-center px-3 py-1 bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-800 rounded-full h-8">
               <span className={`text-[10px] font-bold uppercase tracking-wide ${
                 !userProfile ? "text-slate-600 dark:text-slate-400" :
                 userProfile.subscriptionTier === "ultra" ? "text-amber-600 animate-pulse" : "text-slate-700 dark:text-slate-300"
@@ -104,7 +115,7 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
             {(!userProfile || userProfile.subscriptionTier === "free") && (
               <button
                 onClick={onUpgradeClick}
-                className="text-xs bg-tiffany-500 hover:bg-tiffany-600 text-white font-semibold px-3 py-1.5 rounded-lg flex items-center space-x-1 transition shadow-xs cursor-pointer select-none"
+                className="text-xs bg-tiffany-500 hover:bg-tiffany-600 text-white font-semibold px-2 sm:px-3 py-1.5 rounded-lg flex items-center space-x-1 transition shadow-xs cursor-pointer select-none"
                 id="navbar-upgrade-btn"
               >
                 <Sparkles className="w-3.5 h-3.5" />

@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { LaoLetterDocument, DocumentStatus } from "../types";
-import { db, handleFirestoreError, OperationType } from "../firebase";
-import { doc, deleteDoc, updateDoc, serverTimestamp } from "firebase/firestore";
+import { db, handleFirestoreError, OperationType, safeDeleteDoc, safeUpdateDoc } from "../firebase";
+import { doc, serverTimestamp } from "firebase/firestore";
 import { Search, FileText, Calendar, ArrowRight, Trash2, Edit3, HelpCircle, Eye, RefreshCw, CheckCircle2 } from "lucide-react";
 
 interface DocumentTrackerProps {
@@ -13,8 +13,6 @@ interface DocumentTrackerProps {
 
 export default function DocumentTracker({ documents, onSelectDocument, selectedDocId, onRefresh }: DocumentTrackerProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [stageFilter, setStageFilter] = useState<string>("all");
   const [isDeletingId, setIsDeletingId] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
@@ -22,6 +20,25 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editFlowStatus, setEditFlowStatus] = useState("");
   const [editStatus, setEditStatus] = useState<DocumentStatus>("saved");
+
+  // Inline Title Rename state
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+
+  const handleSaveRename = async (docId: string) => {
+    if (!renameTitle.trim()) return;
+    try {
+      const docRef = doc(db, "documents", docId);
+      await safeUpdateDoc(docRef, {
+        title: renameTitle.trim(),
+        updatedAt: serverTimestamp(),
+      });
+      setRenamingId(null);
+      onRefresh();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, `documents/${docId}`);
+    }
+  };
 
   const handleDeleteRequest = (docId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -32,7 +49,7 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
     e.stopPropagation();
     setIsDeletingId(docId);
     try {
-      await deleteDoc(doc(db, "documents", docId));
+      await safeDeleteDoc(doc(db, "documents", docId));
       setIsDeletingId(null);
       setDeleteConfirmId(null);
       onRefresh();
@@ -54,7 +71,7 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
     e.preventDefault();
     try {
       const docRef = doc(db, "documents", docId);
-      await updateDoc(docRef, {
+      await safeUpdateDoc(docRef, {
         status: editStatus,
         flowStatus: editFlowStatus,
         updatedAt: serverTimestamp(),
@@ -67,20 +84,17 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
   };
 
   const filteredDocs = documents.filter((docItem) => {
-    const matchesSearch =
-      docItem.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (docItem.sender && docItem.sender.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (docItem.receiver && docItem.receiver.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (docItem.referenceNo && docItem.referenceNo.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesStatus = statusFilter === "all" || docItem.status === statusFilter;
-    const matchesStage = stageFilter === "all" || docItem.flowStatus === stageFilter;
-
-    return matchesSearch && matchesStatus && matchesStage;
+    const term = searchTerm.toLowerCase();
+    return (
+      docItem.title.toLowerCase().includes(term) ||
+      (docItem.sender && docItem.sender.toLowerCase().includes(term)) ||
+      (docItem.receiver && docItem.receiver.toLowerCase().includes(term)) ||
+      (docItem.referenceNo && docItem.referenceNo.toLowerCase().includes(term)) ||
+      (docItem.convertedText && docItem.convertedText.toLowerCase().includes(term)) ||
+      (docItem.originalText && docItem.originalText.toLowerCase().includes(term)) ||
+      (docItem.summary && docItem.summary.toLowerCase().includes(term))
+    );
   });
-
-  // Extract all unique stages for filters
-  const stages = Array.from(new Set(documents.map(d => d.flowStatus).filter(Boolean)));
 
   const getStatusBadge = (status: DocumentStatus) => {
     switch (status) {
@@ -113,7 +127,7 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
           </div>
           <button
             onClick={onRefresh}
-            className="p-1.5 hover:bg-slate-50 rounded-lg text-slate-400 hover:text-slate-800 transition cursor-pointer"
+            className="p-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-800 dark:hover:text-slate-300 transition cursor-pointer"
             title="Refresh database"
           >
             <RefreshCw className="w-4 h-4" />
@@ -121,51 +135,25 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
         </div>
 
         {/* Search & Custom filters */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div className="relative col-span-1">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
             <input
               type="text"
               placeholder="ຄົ້ນຫາ... (Search letter, ref...)"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
+              className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 rounded-full pl-9 pr-3 py-1.5 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-tiffany-500/50 focus:border-tiffany-500 transition-colors"
             />
-          </div>
-
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
-            >
-              <option value="all">ສະຖານະທັງໝົດ (All Statuses)</option>
-              <option value="draft">Draft</option>
-              <option value="saved">Saved</option>
-              <option value="final">Final / Official</option>
-            </select>
-          </div>
-
-          <div>
-            <select
-              value={stageFilter}
-              onChange={(e) => setStageFilter(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/25 focus:border-indigo-500"
-            >
-              <option value="all">ຂັ້ນຕອນທັງໝົດ (All Workflow Stages)</option>
-              {stages.map((stg) => (
-                <option key={stg} value={stg}>{stg}</option>
-              ))}
-            </select>
           </div>
         </div>
       </div>
 
       {/* Main Table/Grid Scroller */}
-      <div className="overflow-auto flex-1 p-4 bg-slate-50/40">
+      <div className="overflow-auto flex-1 p-4 bg-slate-50/40 dark:bg-slate-800/10">
         {filteredDocs.length === 0 ? (
           <div className="text-center py-12 px-4">
-            <div className="w-12 h-12 bg-white border border-slate-200 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xxs">
+            <div className="w-12 h-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-xxs">
               <FileText className="w-5 h-5" />
             </div>
             <p className="text-xs font-semibold text-slate-700">ບໍ່ມີເອກະສານ / No Documents Founded</p>
@@ -181,92 +169,109 @@ export default function DocumentTracker({ documents, onSelectDocument, selectedD
                 <div
                   key={docItem.documentId}
                   onClick={() => onSelectDocument(docItem)}
-                  className={`bg-white rounded-2xl border p-4 transition-all duration-200 text-[11px] sm:text-xs cursor-pointer select-none relative ${
+                  className={`bg-white dark:bg-slate-900 rounded-2xl border p-4 transition-all duration-200 text-[11px] sm:text-xs cursor-pointer select-none relative ${
                     matchesSelected
-                      ? "border-indigo-500 shadow-sm ring-2 ring-indigo-500/10 bg-indigo-50/5"
-                      : "border-slate-150 hover:border-slate-350 hover:shadow-xs"
+                      ? "border-tiffany-500 shadow-sm ring-2 ring-tiffany-500/10 bg-tiffany-50/5 dark:bg-tiffany-500/10 dark:border-tiffany-500"
+                      : "border-slate-150 dark:border-slate-800 hover:border-slate-350 dark:hover:border-slate-600 hover:shadow-xs hover:bg-slate-50 dark:hover:bg-slate-800"
                   }`}
                   id={`doc-card-${docItem.documentId}`}
                 >
                   {/* Top-line info: Title & Actions */}
                   <div className="flex items-start justify-between">
-                    <div className="max-w-[80%] pr-4">
-                      <span className="text-[10px] font-mono uppercase bg-slate-100 px-1.5 py-0.5 rounded text-slate-500 mr-2">
-                        {docItem.sourceType}
-                      </span>
-                      <h4 className="font-bold text-slate-900 mt-1 line-clamp-1">{docItem.title}</h4>
-                      {docItem.referenceNo && (
-                        <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                          ເລກທີ: <span className="font-semibold">{docItem.referenceNo}</span> {docItem.referenceDate && `| ວັນທີ: ${docItem.referenceDate}`}
-                        </p>
-                      )}
-                    </div>
+                    {renamingId === docItem.documentId ? (
+                      <div className="flex-1 flex items-center gap-1.5 mr-2" onClick={e => e.stopPropagation()}>
+                        <input
+                          type="text"
+                          value={renameTitle}
+                          onChange={(e) => setRenameTitle(e.target.value)}
+                          className="flex-1 bg-slate-50 dark:bg-slate-800 border border-indigo-400 dark:border-indigo-700 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-900 dark:text-white focus:ring-1 focus:ring-indigo-550 focus:outline-none"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              handleSaveRename(docItem.documentId);
+                            } else if (e.key === "Escape") {
+                              setRenamingId(null);
+                            }
+                          }}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => handleSaveRename(docItem.documentId)}
+                          className="p-1 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/20 rounded transition cursor-pointer"
+                          title="Save title"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setRenamingId(null)}
+                          className="p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition cursor-pointer"
+                          title="Cancel"
+                        >
+                          <span className="text-[10px] font-bold px-1 text-slate-500">X</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="max-w-[70%]">
+                        <h4 className="font-bold text-slate-850 dark:text-slate-100 text-[11px] line-clamp-2 leading-snug pr-1 break-words">{docItem.title}</h4>
+                        <p className="text-[9px] text-slate-400 mt-1 font-medium">{formatDate(docItem.createdAt)} &bull; {docItem.status}</p>
+                      </div>
+                    )}
 
-                    <div className="flex items-center space-x-1.5 self-start" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={(e) => startQuickEdit(docItem, e)}
-                        className="p-1.5 hover:bg-slate-50 rounded text-slate-500 hover:text-slate-800 transition"
-                        title="Edit stages"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={(e) => deleteConfirmId === docItem.documentId ? handleConfirmDelete(docItem.documentId, e) : handleDeleteRequest(docItem.documentId, e)}
-                        className={`p-1.5 rounded transition ${deleteConfirmId === docItem.documentId ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'hover:bg-slate-50 text-slate-500 hover:text-red-500'}`}
-                        title="Delete Document"
-                        disabled={isDeletingId === docItem.documentId}
-                      >
-                        {isDeletingId === docItem.documentId ? (
-                          <div className="w-3.5 h-3.5 border border-slate-300 border-t-red-650 rounded-full animate-spin" />
-                        ) : deleteConfirmId === docItem.documentId ? (
-                          <span className="text-[10px] font-bold px-1">Confirm</span>
+                    {/* Action Buttons: Rename Title & Delete Document */}
+                    {renamingId !== docItem.documentId && (
+                      <div className="flex items-center space-x-1 shrink-0 self-start mt-0.5" onClick={e => e.stopPropagation()}>
+                        {deleteConfirmId === docItem.documentId ? (
+                          <div className="flex items-center gap-1 bg-red-50 dark:bg-red-950/25 border border-red-200 dark:border-red-900/40 p-0.5 rounded-lg">
+                            <span className="text-[9px] text-red-650 dark:text-red-450 font-extrabold px-1">Delete?</span>
+                            <button
+                              onClick={(e) => handleConfirmDelete(docItem.documentId, e)}
+                              className="px-1.5 py-0.5 bg-red-600 hover:bg-red-700 text-white rounded font-bold text-[9px] cursor-pointer transition shadow-xxs"
+                            >
+                              Yes
+                            </button>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(null); }}
+                              className="px-1 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-350 rounded font-bold text-[9px] hover:bg-slate-200 dark:hover:bg-slate-700 cursor-pointer transition"
+                            >
+                              No
+                            </button>
+                          </div>
                         ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <>
+                            {/* Rename File Name option */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setRenamingId(docItem.documentId);
+                                setRenameTitle(docItem.title);
+                              }}
+                              className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition cursor-pointer"
+                              title="Rename Document"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+
+                            {/* Delete Symbol */}
+                            <button
+                              onClick={(e) => handleDeleteRequest(docItem.documentId, e)}
+                              className="p-1 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/20 transition cursor-pointer"
+                              title="Delete Document"
+                              disabled={isDeletingId === docItem.documentId}
+                            >
+                              {isDeletingId === docItem.documentId ? (
+                                <div className="w-3 h-3 border border-slate-300 border-t-red-650 rounded-full animate-spin" />
+                              ) : (
+                                <Trash2 className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                          </>
                         )}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Sender & Receiver layout info */}
-                  {(docItem.sender || docItem.receiver) && (
-                    <div className="mt-3 py-1.5 px-2 bg-slate-50/70 border border-slate-100/30 rounded-lg flex items-center justify-between font-medium text-[10px] text-slate-650">
-                      <div className="truncate max-w-[45%]">
-                        <span className="text-slate-400">ຈາກ:</span> {docItem.sender || "-"}
                       </div>
-                      <ArrowRight className="w-3 h-3 text-slate-400 shrink-0 mx-1.5" />
-                      <div className="truncate max-w-[45%] text-right">
-                        <span className="text-slate-400">ເຖິງ:</span> {docItem.receiver || "-"}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Summary overlay details */}
-                  {docItem.summary && (
-                    <p className="text-[11px] text-slate-500 mt-2 line-clamp-1">
-                      {docItem.summary}
-                    </p>
-                  )}
-
-                  {/* Bottom metrics */}
-                  <div className="mt-4 pt-3 border-t border-slate-50 flex items-center justify-between text-[10px] text-slate-400">
-                    <div className="flex items-center space-x-1">
-                      <Calendar className="w-3 h-3" />
-                      <span>{formatDate(docItem.createdAt)}</span>
-                    </div>
-
-                    <div className="flex items-center space-x-2">
-                      <span className="text-xxs px-2 py-0.5 rounded bg-slate-100 text-slate-650 font-medium">
-                        {docItem.flowStatus || "Draft"}
-                      </span>
-                      <span className={`text-xxs px-2 py-0.5 rounded border ${getStatusBadge(docItem.status)}`}>
-                        {docItem.status}
-                      </span>
-                    </div>
+                    )}
                   </div>
 
                   {/* Quick Edit Popup Drawer */}
                   {isEditingThis && (
-                    <div className="absolute inset-0 bg-white/95 rounded-xl p-4 flex flex-col justify-between z-10" onClick={e => e.stopPropagation()}>
+                    <div className="absolute inset-0 bg-white/95 dark:bg-slate-900/95 rounded-xl p-4 flex flex-col justify-between z-10 backdrop-blur-sm" onClick={e => e.stopPropagation()}>
                       <form onSubmit={(e) => handleSaveQuickEdit(docItem.documentId, e)} className="space-y-3 flex-1 flex flex-col justify-between">
                         <div>
                           <h5 className="font-bold text-slate-900 mb-2">ປ່ຽນແປງຂັ້ນຕອນ / Edit Stages</h5>

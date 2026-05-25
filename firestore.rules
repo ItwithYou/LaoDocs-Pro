@@ -17,6 +17,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
+        request.auth.uid == "zVEwrk4m8XNueS0HiNRDIgMHwWm2" ||
         request.auth.token.email == "norecord88@gmail.com" || 
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
       );
@@ -50,9 +51,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
-      allow create: if isSignedIn() && request.auth.uid == userId;
-      allow update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if false;
+      allow create: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow update: if (isSignedIn() && request.auth.uid == userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     match /subscriptionRequests/{reqId} {
@@ -80,18 +81,18 @@ service cloud.firestore {
     match /documents/{documentId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
       // Creation rules with server timestamp
-      allow create: if isSignedIn() && isValidId(documentId)
+      allow create: if isAdmin() || (isSignedIn() && isValidId(documentId)
         && isValidDocument(request.resource.data)
         // Ensure accurate server timestamp
         && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time);
       // Updating existing documents securely
-      allow update: if isSignedIn() && isValidId(documentId)
+      allow update: if isAdmin() || (isSignedIn() && isValidId(documentId)
         && isValidDocument(request.resource.data)
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time);
       // Delete documents safely
-      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
     }
   }
 }

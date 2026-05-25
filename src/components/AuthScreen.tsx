@@ -1,6 +1,6 @@
 import { loginWithGoogle } from "../firebase";
 import { useState } from "react";
-import { FileText, ShieldCheck, Sparkles, Languages, CheckCircle2, Sun, Moon } from "lucide-react";
+import { FileText, ShieldCheck, Sparkles, Languages, CheckCircle2, Sun, Moon, Droplet, Palette } from "lucide-react";
 import { useLanguage, useTheme } from "../contexts";
 
 interface AuthScreenProps {
@@ -11,7 +11,7 @@ interface AuthScreenProps {
 export default function AuthScreen({ onLoginSuccess, onGuestLogin }: AuthScreenProps) {
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const { isDark, toggleDark } = useTheme();
+  const { theme, setTheme } = useTheme();
   const { isLao, toggleLanguage } = useLanguage();
 
   const handleGoogleLogin = async () => {
@@ -41,7 +41,7 @@ export default function AuthScreen({ onLoginSuccess, onGuestLogin }: AuthScreenP
         <div className="relative z-10">
           {/* Logo */}
           <div className="flex items-center space-x-3 mb-10">
-            <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-slate-950 shrink-0 shadow-lg">
+            <div className="w-12 h-12 bg-white dark:bg-slate-800 rounded-xl flex items-center justify-center text-slate-950 dark:text-white shrink-0 shadow-lg">
               <FileText className="w-6 h-6 text-slate-950" />
             </div>
             <div>
@@ -103,11 +103,21 @@ export default function AuthScreen({ onLoginSuccess, onGuestLogin }: AuthScreenP
           </button>
           
           <button
-            onClick={toggleDark}
-            className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-500 dark:text-slate-400 transition cursor-pointer"
+            onClick={() => {
+              if (theme === 'light') setTheme('dark');
+              else if (theme === 'dark') setTheme('soft-blue');
+              else if (theme === 'soft-blue') setTheme('warm-clay');
+              else if (theme === 'warm-clay') setTheme('fresh-mint');
+              else setTheme('light');
+            }}
+            className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition cursor-pointer"
             title="Toggle Theme"
           >
-            {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {theme === 'light' && <Moon className="w-5 h-5 text-slate-600" />}
+            {theme === 'dark' && <Moon className="w-5 h-5 text-slate-400 fill-current" />}
+            {theme === 'soft-blue' && <Palette className="w-5 h-5 text-tiffany-600" />}
+            {theme === 'warm-clay' && <Sun className="w-5 h-5 text-tiffany-500" />}
+            {theme === 'fresh-mint' && <Droplet className="w-5 h-5 text-tiffany-500" />}
           </button>
         </div>
 
