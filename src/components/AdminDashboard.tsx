@@ -1,23 +1,28 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { UserProfile, LaoLetterDocument } from "../types";
 import { db, handleFirestoreError, OperationType, auth, safeGetDoc, safeGetDocs, safeSetDoc, safeUpdateDoc, safeDeleteDoc } from "../firebase";
-import { collection, query, orderBy, doc, where } from "firebase/firestore";
+import { collection, query, orderBy, doc, where, onSnapshot } from "firebase/firestore";
 import { sendPasswordResetEmail } from "firebase/auth";
-import { ShieldCheck, X, Users, RefreshCw, KeyRound, AlertCircle, FileText, Upload, ChevronDown, Database, HardDrive, Activity, UserCheck, TrendingUp, Coins, Eye, Download, ZoomIn, ZoomOut, RotateCw } from "lucide-react";
+import { ShieldCheck, X, Users, User, RefreshCw, KeyRound, AlertCircle, FileText, Upload, ChevronDown, Database, HardDrive, Activity, UserCheck, TrendingUp, Coins, Eye, Download, ZoomIn, ZoomOut, RotateCw, Printer, FileSpreadsheet, Presentation } from "lucide-react";
+import SupportChat from "./SupportChat";
 
 interface AdminDashboardProps {
+  userProfile: UserProfile | null;
+  onUpdate: (updatedProfile: UserProfile) => void;
   onClose?: () => void;
   inline?: boolean;
+  initialTab?: 'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents';
 }
 
-export default function AdminDashboard({ onClose, inline = false }: AdminDashboardProps) {
+export default function AdminDashboard({ userProfile, onUpdate, onClose, inline = false, initialTab }: AdminDashboardProps) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
   const [aiTypes, setAiTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat'>('requests');
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents'>(initialTab || 'requests');
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   
   const [bankQrUrlPro, setBankQrUrlPro] = useState("");
   const [bankQrUrlUltra, setBankQrUrlUltra] = useState("");
@@ -51,6 +56,8 @@ export default function AdminDashboard({ onClose, inline = false }: AdminDashboa
   const [userFiles, setUserFiles] = useState<LaoLetterDocument[]>([]);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [activeFileDetail, setActiveFileDetail] = useState<LaoLetterDocument | null>(null);
+  const [allDocuments, setAllDocuments] = useState<LaoLetterDocument[]>([]);
+  const [loadingAllDocs, setLoadingAllDocs] = useState(false);
 
   // States & handlers for Payment Slip Viewer
   const [viewingSlipUrl, setViewingSlipUrl] = useState<string | null>(null);
@@ -198,6 +205,158 @@ ${docItem.originalText || ''}
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadWord = (docItem: LaoLetterDocument) => {
+    if (!docItem) return;
+    const title = docItem.title || "Letter_Converted";
+    const bodyContent = `
+      <div class="WordSection1">
+        ${docItem.convertedText || ""}
+      </div>
+    `;
+
+    const header = `
+      <html xmlns:v="urn:schemas-microsoft-com:vml"
+            xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:w="urn:schemas-microsoft-com:office:word"
+            xmlns:m="http://schemas.microsoft.com/office/2004/12/omml"
+            xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+      <title>${title}</title>
+      <!--[if gte mso 9]>
+      <xml>
+        <w:WordDocument>
+          <w:View>Print</w:View>
+          <w:Zoom>100</w:Zoom>
+          <w:DoNotOptimizeForBrowser/>
+        </w:WordDocument>
+      </xml>
+      <![endif]-->
+      <style>
+      @import url('https://fonts.googleapis.com/css2?family=Phetsarath&display=swap');
+      @page WordSection1 {
+        size: 595.3pt 841.9pt; /* A4 */
+        margin: 56.7pt 56.7pt 56.7pt 85.05pt; /* Top: 2cm, Right: 2cm, Bottom: 2cm, Left: 3cm */
+      }
+      div.WordSection1 { page: WordSection1; }
+      body, p, div, td, span {
+        font-size: 12.0pt;
+        font-family: "Times New Roman", serif;
+        mso-bidi-font-family: "Phetsarath OT", sans-serif;
+      }
+      .font-lao { font-family: "Phetsarath OT", sans-serif !important; }
+      p { margin: 0 0 8pt 0; line-height: 115%; }
+      .center { text-align: center; }
+      .right { text-align: right; }
+      </style>
+      </head>
+      <body>
+    `;
+    const footer = "</body></html>";
+    const blobContent = "\ufeff" + header + bodyContent + footer;
+    const blob = new Blob([blobContent], { type: "application/msword;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, "_")}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadExcel = (docItem: LaoLetterDocument) => {
+    if (!docItem) return;
+    const title = docItem.title || "Letter_Converted";
+    const bodyHTML = docItem.convertedText || "";
+    const header = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:x='urn:schemas-microsoft-com:office:excel' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>${title}</title>
+      <style>
+      body { font-family: 'Times New Roman', 'Phetsarath OT', serif; }
+      td, th { border: 0.5pt solid #cbd5e1; padding: 8px; font-size: 11pt; }
+      </style></head>
+      <body>
+        <table>
+          <thead>
+            <tr><th colspan="4" style="background-color: #0abab5; color: white; height: 45px; font-size: 14pt; font-weight: bold; text-align: center;">LAODOC RECORD</th></tr>
+            <tr><th colspan="4" style="background-color: #0d9692; color: white; height: 30px; font-size: 12pt; font-weight: bold; text-align: center;">${title}</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Reference No</td><td colspan="3">${docItem.referenceNo || "-"}</td></tr>
+            <tr><td>Date</td><td colspan="3">${docItem.referenceDate || "-"}</td></tr>
+            <tr><td>Sender</td><td colspan="3">${docItem.sender || "-"}</td></tr>
+            <tr><td>Receiver</td><td colspan="3">${docItem.receiver || "-"}</td></tr>
+            <tr><td colspan="4" style="background-color: #072d2e; color: white; font-weight: bold; height: 35px; text-align: center;">CONTENT</td></tr>
+            <tr><td colspan="4">${bodyHTML}</td></tr>
+          </tbody>
+        </table>
+      </body></html>
+    `;
+    const blobContent = "\ufeff" + header;
+    const blob = new Blob([blobContent], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${title.replace(/\s+/g, "_")}.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDownloadPPT = (docItem: LaoLetterDocument) => {
+    if (!docItem) return;
+    import("pptxgenjs").then((pptxgenModule) => {
+      const pptx = new pptxgenModule.default();
+      const title = docItem.title || "Letter_Converted";
+      const slide1 = pptx.addSlide();
+      slide1.addText(title, { x: 1, y: 1.5, w: 8, h: 1, align: "center", fontSize: 24, bold: true });
+      slide1.addText(`Sender: ${docItem.sender || "-"}`, { x: 1, y: 3, w: 8, h: 0.5, align: "center" });
+      pptx.writeFile({ fileName: `${title.replace(/\s+/g, "_")}_slides.pptx` });
+    }).catch(err => {
+      console.error(err);
+      alert("PPT generation failed");
+    });
+  };
+
+  const handlePrintDocument = (docItem: LaoLetterDocument) => {
+    if (!docItem) return;
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return;
+    printWindow.document.write(`
+      <html><head><title>${docItem.title}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Phetsarath&display=swap');
+        @page { size: A4; margin: 0 !important; }
+        body { font-family: 'Phetsarath', 'Phetsarath OT', serif; padding: 2cm 2cm 2cm 3cm; }
+        .center { text-align: center; }
+      </style></head>
+      <body><div>${docItem.convertedText}</div>
+      <script>window.onload = function() { window.print(); window.close(); };</script>
+      </body></html>
+    `);
+    printWindow.document.close();
+  };
+
+  const handleFetchAllDocuments = async () => {
+    setLoadingAllDocs(true);
+    setAllDocuments([]);
+    setActiveFileDetail(null);
+    try {
+      const q = query(collection(db, "documents"), orderBy("createdAt", "desc"));
+      const snap = await safeGetDocs(q);
+      const list: LaoLetterDocument[] = [];
+      snap.forEach((d) => {
+        list.push(d.data() as LaoLetterDocument);
+      });
+      setAllDocuments(list);
+    } catch (e: any) {
+      console.error(e);
+      setMessage({ type: 'error', text: `Failed to fetch all documents: ${e.message}` });
+    } finally {
+      setLoadingAllDocs(false);
+    }
+  };
+
   const handleFetchUserFiles = async (user: UserProfile) => {
     setSelectedUserForFiles(user);
     setLoadingFiles(true);
@@ -299,18 +458,61 @@ ${docItem.originalText || ''}
                 <div className="space-y-4 flex-1 animate-in fade-in duration-200">
                   <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3 gap-2">
                     <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">{activeFileDetail.title}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-sm">{activeFileDetail.title}</h4>
+                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                          activeFileDetail.status === 'final' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400' :
+                          activeFileDetail.status === 'saved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400' :
+                          'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                        }`}>
+                          {activeFileDetail.status}
+                        </span>
+                      </div>
                       <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">ID: {activeFileDetail.documentId}</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadDocumentText(activeFileDetail)}
-                      className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/20 text-white dark:text-emerald-400 text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1.5 rounded-lg shadow-sm transition shrink-0 cursor-pointer"
-                      title="Download full content as TXT"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                      Download TXT
-                    </button>
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => handlePrintDocument(activeFileDetail)}
+                        className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                        title="Print A4"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadWord(activeFileDetail)}
+                        className="p-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-100 dark:border-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition cursor-pointer"
+                        title="Download Word (.doc)"
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadExcel(activeFileDetail)}
+                        className="p-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-100 dark:border-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition cursor-pointer"
+                        title="Download Excel (.xls)"
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadPPT(activeFileDetail)}
+                        className="p-1.5 bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-lg border border-orange-100 dark:border-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-500/20 transition cursor-pointer"
+                        title="Download Slides (.pptx)"
+                      >
+                        <Presentation className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadDocumentText(activeFileDetail)}
+                        className="inline-flex items-center gap-1 bg-slate-800 dark:bg-slate-700 text-white text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1.5 rounded-lg shadow-sm transition shrink-0 cursor-pointer"
+                        title="Download full content as TXT"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        TXT
+                      </button>
+                    </div>
                   </div>
 
                   {(activeFileDetail.sender || activeFileDetail.receiver) && (
@@ -380,6 +582,23 @@ ${docItem.originalText || ''}
     fetchTemplates();
     fetchAiTypes();
   }, []);
+
+  useEffect(() => {
+    const isModeAdmin = userProfile?.role === "admin" || userProfile?.userId === "zVEwrk4m8XNueS0HiNRDIgMHwWm2";
+    if (!isModeAdmin) return;
+
+    const unsubscribeAdminCount = onSnapshot(collection(db, "chats"), (snapshot) => {
+      let unreadTotal = 0;
+      snapshot.forEach((docItem) => {
+        const chatData = docItem.data();
+        if (chatData.unreadByAdmin) {
+          unreadTotal++;
+        }
+      });
+      setUnreadChatCount(unreadTotal);
+    });
+    return () => unsubscribeAdminCount();
+  }, [userProfile]);
 
   const fetchAiTypes = async () => {
     try {
@@ -717,32 +936,17 @@ ${docItem.originalText || ''}
     }
   };
 
-  const handleResetPassword = async (email: string) => {
-    if (!email) {
-      setMessage({ type: 'error', text: "User has no email address." });
-      return;
-    }
-    
+  const handleUpdateSubscription = async (userId: string, tier: 'free' | 'pro' | 'ultra', expiryDate: string | null) => {
     try {
-      await sendPasswordResetEmail(auth, email);
-      setMessage({ type: 'success', text: `Password reset email sent to ${email}` });
+      await safeUpdateDoc(doc(db, "users", userId), { 
+        subscriptionTier: tier,
+        subscriptionEnd: expiryDate 
+      });
+      setUsers(users.map(u => u.userId === userId ? { ...u, subscriptionTier: tier, subscriptionEnd: expiryDate || undefined } : u));
+      setMessage({ type: 'success', text: `Subscription updated for user.` });
     } catch (error: any) {
-      console.error("Error sending reset email:", error);
-      setMessage({ type: 'error', text: `Error: ${error.message}` });
-    }
-    
-    // Clear message after 5 seconds
-    setTimeout(() => setMessage(null), 5000);
-  };
-
-  const handleUpdateTier = async (userId: string, newTier: 'free' | 'pro' | 'ultra') => {
-    try {
-      await safeUpdateDoc(doc(db, "users", userId), { subscriptionTier: newTier });
-      setUsers(users.map(u => u.userId === userId ? { ...u, subscriptionTier: newTier } : u));
-      setMessage({ type: 'success', text: `User tier updated to ${newTier.toUpperCase()}` });
-    } catch (error: any) {
-      console.error("Error updating tier:", error);
-      setMessage({ type: 'error', text: `Failed to update tier: ${error.message}` });
+      console.error("Error updating subscription:", error);
+      setMessage({ type: 'error', text: `Failed to update subscription: ${error.message}` });
     }
     setTimeout(() => setMessage(null), 5000);
   };
@@ -880,7 +1084,13 @@ ${docItem.originalText || ''}
             </div>
 
             {/* Total Documents */}
-            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
+            <div 
+              onClick={() => {
+                setActiveTab('documents');
+                handleFetchAllDocuments();
+              }}
+              className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-[0.98]"
+            >
               <div className="space-y-1">
                 <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total OCR Documents</span>
                 <span className="text-2xl font-black text-slate-800 dark:text-white block">{stats.totalDocuments}</span>
@@ -910,7 +1120,23 @@ ${docItem.originalText || ''}
           
           <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
             <button onClick={() => setActiveTab('requests')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'requests' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Pending Payment Slips</button>
-            <button onClick={() => setActiveTab('chat')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'chat' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Customer Chat</button>
+            <button 
+              onClick={() => {
+                setActiveTab('documents');
+                handleFetchAllDocuments();
+              }} 
+              className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'documents' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}
+            >
+              Global Documents
+            </button>
+            <button onClick={() => setActiveTab('chat')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'chat' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'} flex items-center gap-1.5`}>
+              Customer Chat
+              {unreadChatCount > 0 && (
+                <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
+                  {unreadChatCount}
+                </span>
+              )}
+            </button>
             <button onClick={() => setActiveTab('tracking')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'tracking' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>Sub Expirations Tracker</button>
             <button onClick={() => setActiveTab('billing')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'billing' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>API Keys & Spend</button>
             <button onClick={() => setActiveTab('users')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'users' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500 hover:text-slate-700'}`}>Registered Users</button>
@@ -919,7 +1145,217 @@ ${docItem.originalText || ''}
             <button onClick={() => setActiveTab('bankqrs')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'bankqrs' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Bank QRs</button>
           </div>
 
-          {activeTab === 'bankqrs' ? (
+          {activeTab === 'documents' ? (
+            <div className="bg-white dark:bg-slate-900 w-full rounded-2xl shadow-sm overflow-hidden flex flex-col h-[600px] border border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-2">
+              <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/40">
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-sm flex items-center gap-2">
+                    <Database className="w-4 h-4 text-tiffany-500" />
+                    Global Documents Repository
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Explore every OCR transformation across the entire platform.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={handleFetchAllDocuments}
+                    className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${loadingAllDocs ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-auto flex flex-col md:flex-row min-h-0">
+                {/* Left Side: All Files list */}
+                <div className="w-full md:w-1/3 border-r border-slate-100 dark:border-slate-800 p-4 overflow-y-auto space-y-2 min-h-0 bg-slate-50/30 dark:bg-slate-900/30">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">All Records ({allDocuments.length})</h4>
+                  </div>
+                  
+                  {loadingAllDocs ? (
+                    <div className="py-12 text-center text-slate-400">
+                      <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-tiffany-500" />
+                      <p className="text-xs animate-pulse">Scanning database...</p>
+                    </div>
+                  ) : allDocuments.length === 0 ? (
+                    <div className="py-12 text-center">
+                      <FileText className="w-8 h-8 text-slate-200 dark:text-slate-800 mx-auto mb-2" />
+                      <p className="text-xs text-slate-400 italic">No documents found in database.</p>
+                    </div>
+                  ) : (
+                    allDocuments.map((docItem) => {
+                      // Find owner name
+                      const owner = users.find(u => u.userId === docItem.ownerId);
+                      return (
+                        <button
+                          key={docItem.documentId}
+                          type="button"
+                          onClick={() => setActiveFileDetail(docItem)}
+                          className={`w-full text-left p-3 rounded-xl border transition flex flex-col gap-1 cursor-pointer ${
+                            activeFileDetail?.documentId === docItem.documentId
+                              ? "bg-tiffany-550/10 border-tiffany-500 dark:bg-tiffany-500/5 text-slate-900 dark:text-white font-semibold"
+                              : "bg-white hover:bg-slate-50 border-slate-200 dark:bg-slate-800/35 dark:border-slate-800 dark:hover:bg-slate-850 text-slate-700 dark:text-slate-350"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <span className="font-bold text-[11px] truncate max-w-[140px] text-slate-900 dark:text-white">
+                              {docItem.title || "Untitled Record"}
+                            </span>
+                            <span className={`text-[8px] font-black uppercase px-1.2 py-0.5 rounded shadow-sm ${
+                              docItem.status === 'final' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400' :
+                              docItem.status === 'saved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400' :
+                              'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {docItem.status}
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-0.5 mt-0.5">
+                            <span className="text-[9px] text-tiffany-600 dark:text-tiffany-400 font-bold truncate">
+                              Owner: {owner ? (owner.displayName || owner.email) : 'Unknown User'}
+                            </span>
+                            <div className="flex items-center justify-between text-[9px] text-slate-400">
+                              <span>{docItem.sourceType}</span>
+                              <span>
+                                {docItem.createdAt && (docItem.createdAt as any).toDate 
+                                  ? (docItem.createdAt as any).toDate().toLocaleDateString()
+                                  : new Date(docItem.createdAt || Date.now()).toLocaleDateString()
+                                }
+                              </span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Right Side: Document Content inspection */}
+                <div className="w-full md:w-2/3 p-5 overflow-y-auto bg-white dark:bg-slate-950/20 min-h-0 flex flex-col">
+                  {activeFileDetail ? (
+                    <div className="space-y-4 flex-1 animate-in fade-in duration-200">
+                      <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800 pb-3 gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-slate-900 dark:text-white text-sm">{activeFileDetail.title}</h4>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                              activeFileDetail.status === 'final' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400' :
+                              activeFileDetail.status === 'saved' ? 'bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400' :
+                              'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {activeFileDetail.status}
+                            </span>
+                          </div>
+                          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">ID: {activeFileDetail.documentId}</p>
+                          <p className="text-[9px] text-indigo-500 font-bold mt-0.5">
+                            User: {users.find(u => u.userId === activeFileDetail.ownerId)?.email || 'ID: ' + activeFileDetail.ownerId}
+                          </p>
+                        </div>
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handlePrintDocument(activeFileDetail)}
+                            className="p-1.5 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+                            title="Print A4"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadWord(activeFileDetail)}
+                            className="p-1.5 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-lg border border-blue-100 dark:border-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-500/20 transition cursor-pointer"
+                            title="Download Word (.doc)"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadExcel(activeFileDetail)}
+                            className="p-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-lg border border-emerald-100 dark:border-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 transition cursor-pointer"
+                            title="Download Excel (.xls)"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadPPT(activeFileDetail)}
+                            className="p-1.5 bg-orange-50 dark:bg-orange-500/10 text-orange-600 dark:text-orange-400 rounded-lg border border-orange-100 dark:border-orange-900/30 hover:bg-orange-100 dark:hover:bg-orange-500/20 transition cursor-pointer"
+                            title="Download Slides (.pptx)"
+                          >
+                            <Presentation className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadDocumentText(activeFileDetail)}
+                            className="inline-flex items-center gap-1 bg-slate-800 dark:bg-slate-700 text-white text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-1.5 rounded-lg shadow-sm transition shrink-0 cursor-pointer"
+                            title="Download full content as TXT"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            TXT
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="bg-slate-50/50 dark:bg-slate-800/40 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
+                          <h5 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Document Summary</h5>
+                          <div className="space-y-3">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 capitalize">Reference No</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{activeFileDetail.referenceNo || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 capitalize">Reference Date</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200">{activeFileDetail.referenceDate || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 capitalize">Sender / Entity</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-2">{activeFileDetail.sender || "N/A"}</span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[9px] text-slate-400 capitalize">Receiver / Recipient</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 line-clamp-2">{activeFileDetail.receiver || "N/A"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-tiffany-500/5 dark:bg-tiffany-500/10 p-4 rounded-xl border border-tiffany-500/20 flex flex-col justify-between">
+                          <div>
+                            <h5 className="text-[10px] font-bold text-tiffany-600 dark:text-tiffany-400 uppercase tracking-wider mb-2">Record Stats</h5>
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-slate-500">Source Format</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">{activeFileDetail.sourceType || "image"}</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-slate-500">Language Mode</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">Lao / Official</span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-slate-500">Character Count</span>
+                                <span className="font-bold text-slate-700 dark:text-slate-200">{(activeFileDetail.convertedText || "").length} chars</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="mt-4 pt-4 border-t border-tiffany-500/10">
+                            <p className="text-[9px] text-slate-400 italic">Download the full record using the buttons above to view complete converted content.</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex flex-col items-center justify-center text-slate-400/80 p-8 h-full min-h-[400px]">
+                      <div className="w-16 h-16 bg-slate-50 dark:bg-slate-900 rounded-2xl flex items-center justify-center mb-4 border border-slate-100 dark:border-slate-800 shadow-sm">
+                        <FileText className="w-8 h-8 opacity-40 text-tiffany-500" />
+                      </div>
+                      <h4 className="font-bold text-slate-900 dark:text-white text-sm">Select a document</h4>
+                      <p className="text-xs text-center max-w-[200px] mt-1">Review the contents, metadata, and owner information for any transformation record.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'bankqrs' ? (
             <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
               <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm flex items-center gap-2">
                 <Upload className="w-4 h-4 text-tiffany-500" />
@@ -1059,7 +1495,7 @@ ${docItem.originalText || ''}
             </div>
           ) : activeTab === 'chat' ? (
             <div className="bg-slate-50 dark:bg-slate-950/40 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden h-[600px] animate-in fade-in slide-in-from-bottom-2">
-              <SupportChat userProfile={null} onLoginClick={() => {}} inline={true} defaultTab="admin-portal" />
+              <SupportChat userProfile={userProfile} onLoginClick={() => {}} inline={true} defaultTab="admin-portal" />
             </div>
           ) : activeTab === 'requests' ? (
             <div className="space-y-4">
@@ -1548,131 +1984,119 @@ ${docItem.originalText || ''}
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 text-xs uppercase font-semibold text-slate-500 dark:text-slate-400">
+                <thead className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
                   <tr>
-                    <th className="px-4 py-3">Photo</th>
-                    <th className="px-4 py-3">User</th>
-                    <th className="px-4 py-3">Birthday</th>
-                    <th className="px-4 py-3">Email</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Tier</th>
-                    <th className="px-4 py-3">Docs</th>
-                    <th className="px-4 py-3">Joined Date</th>
+                    <th className="px-4 py-3">Member Details</th>
+                    <th className="px-4 py-3">Access Level</th>
+                    <th className="px-4 py-3">Subscription</th>
+                    <th className="px-4 py-3">Valid Until</th>
                     <th className="px-4 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
                   {loading ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-12 text-center text-slate-400">
+                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-tiffany-500" />
-                        <p>Loading users...</p>
+                        <p className="text-xs">Loading database...</p>
                       </td>
                     </tr>
                   ) : users.length === 0 ? (
                     <tr>
-                      <td colSpan={9} className="px-4 py-8 text-center text-slate-400">
-                        No users found in database.
+                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-xs italic">
+                        No registered members found.
                       </td>
                     </tr>
                   ) : (
                     users.map((user) => (
-                      <tr key={user.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition">
-                        <td className="px-4 py-3">
-                          <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-100 flex items-center justify-center">
-                            {user.profilePhoto ? (
-                              <img src={user.profilePhoto} alt="Profile" className="w-full h-full object-cover" />
-                            ) : (
-                              <Users className="w-4 h-4 text-slate-400" />
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
-                          <div className="flex flex-col">
-                            <span className="flex items-center gap-1.5 font-bold">
-                              {user.displayName || "Unknown User"}
-                              {(user as any).isActiveUser ? (
-                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-slate-900" title="Active User" />
+                      <tr key={user.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition group">
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
+                              {user.profilePhoto ? (
+                                <img src={user.profilePhoto} alt="" className="w-full h-full object-cover" />
                               ) : (
-                                <span className="inline-block w-2.5 h-2.5 rounded-full bg-slate-350 dark:bg-slate-700 border border-white dark:border-slate-900" title="Inactive User" />
+                                <User className="w-4 h-4 text-slate-400" />
                               )}
-                            </span>
-                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-semibold mt-0.5">
-                              {(user as any).isActiveUser ? "Active Activity" : "Idle Account"}
-                            </span>
+                            </div>
+                            <div className="flex flex-col min-w-0">
+                              <span className="font-extrabold text-slate-900 dark:text-white truncate text-sm flex items-center gap-1.5">
+                                {user.displayName || "Lao Business Partner"}
+                                {(user as any).isActiveUser && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                )}
+                              </span>
+                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{user.email}</span>
+                              <span className="text-[9px] text-slate-400 mt-0.5">Joined: {user.createdAt && (user.createdAt as any).toDate ? (user.createdAt as any).toDate().toLocaleDateString() : new Date(user.createdAt || Date.now()).toLocaleDateString()}</span>
+                            </div>
                           </div>
                         </td>
-                        <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                          {user.birthday || "Not Set"}
-                        </td>
-                        <td className="px-4 py-3 text-xs font-mono text-slate-600 dark:text-slate-400">
-                          {user.email || "No Email"}
-                        </td>
                         <td className="px-4 py-3">
-                          <div className="relative">
+                          <div className="relative w-max">
                             <select
                               value={user.role || 'user'}
                               onChange={(e) => handleUpdateRole(user.userId, e.target.value as 'user' | 'admin')}
-                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded text-[11px] font-bold uppercase tracking-wider px-2 py-1 cursor-pointer pr-6 ${
-                                user.role === 'admin' ? 'bg-red-105 text-red-800 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30' :
-                                'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
+                                user.role === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                                'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
                               }`}
                             >
                               <option value="user">User</option>
                               <option value="admin">Admin</option>
                             </select>
-                            <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="relative">
+                          <div className="relative w-max">
                             <select
                               value={user.subscriptionTier || 'free'}
-                              onChange={(e) => handleUpdateTier(user.userId, e.target.value as 'free' | 'pro' | 'ultra')}
-                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded text-[11px] font-bold uppercase tracking-wider px-2 py-1 cursor-pointer pr-6 ${
-                                user.subscriptionTier === 'ultra' ? 'bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30' :
-                                user.subscriptionTier === 'pro' ? 'bg-indigo-100 text-indigo-800 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-400 dark:border-indigo-500/30' :
-                                'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                              onChange={(e) => handleUpdateSubscription(user.userId, e.target.value as 'free' | 'pro' | 'ultra', user.subscriptionEnd || null)}
+                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
+                                user.subscriptionTier === 'ultra' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20' :
+                                user.subscriptionTier === 'pro' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20' :
+                                'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
                               }`}
                             >
                               <option value="free">Free</option>
                               <option value="pro">Pro</option>
                               <option value="ultra">Ultra</option>
                             </select>
-                            <ChevronDown className="w-3 h-3 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
+                            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-col text-xs text-slate-700 dark:text-slate-300 font-medium whitespace-nowrap">
-                            <span className="font-bold font-mono">{(user as any).docCount || 0} files</span>
-                            <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500 mt-0.5">
-                              {formatBytes((user as any).storageBytes || 0)}
-                            </span>
+                          <div className="flex flex-col gap-1.5">
+                            <input
+                              id={`expiry-${user.userId}`}
+                              type="date"
+                              defaultValue={user.subscriptionEnd ? user.subscriptionEnd.split('T')[0] : ""}
+                              className="text-[10px] font-bold p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-tiffany-500 w-[130px] shadow-xs"
+                            />
+                            <button 
+                              onClick={() => {
+                                const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
+                                if (el) el.value = "";
+                                handleUpdateSubscription(user.userId, user.subscriptionTier, null);
+                              }}
+                              className="text-[9px] font-black text-tiffany-600 dark:text-tiffany-400 hover:text-tiffany-700 uppercase tracking-widest text-left w-fit px-1 select-none cursor-pointer"
+                            >
+                              Set Lifetime
+                            </button>
                           </div>
-                        </td>
-                        <td className="px-4 py-3 text-xs">
-                          {user.createdAt && (user.createdAt as any).toDate 
-                            ? (user.createdAt as any).toDate().toLocaleDateString()
-                            : new Date(user.createdAt || Date.now()).toLocaleDateString()
-                          }
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-2 items-center">
-                            <button
-                              onClick={() => handleFetchUserFiles(user)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-tiffany-600 bg-tiffany-50 hover:bg-tiffany-100 dark:bg-tiffany-500/10 dark:text-tiffany-400 dark:hover:bg-tiffany-500/25 transition cursor-pointer"
-                            >
-                              <FileText className="w-3.5 h-3.5" />
-                              View Files
-                            </button>
-                            <button
-                              onClick={() => handleResetPassword(user.email)}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-bold text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:text-red-400 dark:hover:bg-red-500/20 transition cursor-pointer"
-                            >
-                              <KeyRound className="w-3.5 h-3.5" />
-                              Reset Password
-                            </button>
-                          </div>
+                          <button
+                            onClick={() => {
+                              const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
+                              const dateVal = el?.value || null;
+                              handleUpdateSubscription(user.userId, user.subscriptionTier, dateVal ? new Date(dateVal).toISOString() : null);
+                            }}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-black dark:bg-tiffany-600 dark:hover:bg-tiffany-500 transition-all shadow-md active:scale-95 cursor-pointer"
+                          >
+                            <RotateCw className="w-3.5 h-3.5" />
+                            Apply Changes
+                          </button>
                         </td>
                       </tr>
                     ))

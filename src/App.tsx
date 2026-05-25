@@ -25,6 +25,7 @@ export default function App() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [adminInitialTab, setAdminInitialTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat'>('requests');
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'soft-blue' | 'warm-clay' | 'fresh-mint'>(() => {
     const saved = localStorage.getItem("lao-docs-theme");
@@ -100,7 +101,7 @@ export default function App() {
         profileData = {
           userId: user.uid,
           email: user.email || "",
-          displayName: user.displayName || "Lao Business Partner",
+          displayName: isSystemAdmin ? "LaoDocs Admin" : (user.displayName || "Lao Business Partner"),
           subscriptionTier: isSystemAdmin ? "ultra" : "free",
           role: isSystemAdmin ? "admin" : "user",
           createdAt: new Date(),
@@ -116,7 +117,7 @@ export default function App() {
         profileData = {
           userId: data.userId,
           email: data.email || user.email || "",
-          displayName: data.displayName || user.displayName || "Lao Business Partner",
+          displayName: isSystemAdmin ? "LaoDocs Admin" : (data.displayName || user.displayName || "Lao Business Partner"),
           subscriptionTier: isSystemAdmin ? "ultra" : (data.subscriptionTier || "free"),
           role: isSystemAdmin ? "admin" : (data.role || "user"),
           createdAt: data.createdAt || new Date(),
@@ -124,11 +125,12 @@ export default function App() {
           profilePhoto: data.profilePhoto || user.photoURL || "",
         };
         // Update database if the database values are stale for the admin
-        if (isSystemAdmin && (data.role !== "admin" || data.subscriptionTier !== "ultra")) {
+        if (isSystemAdmin && (data.role !== "admin" || data.subscriptionTier !== "ultra" || data.displayName !== "LaoDocs Admin")) {
           const { safeUpdateDoc } = await import("./firebase");
           await safeUpdateDoc(userRef, {
             role: "admin",
-            subscriptionTier: "ultra"
+            subscriptionTier: "ultra",
+            displayName: "LaoDocs Admin"
           });
         }
       }
@@ -223,7 +225,14 @@ export default function App() {
         }}
         onLogout={handleLogout}
         onLoginClick={handleGoogleLoginDirect}
-        onAdminClick={() => setIsAdminModalOpen(true)}
+        onAdminClick={() => {
+          setAdminInitialTab('requests');
+          setIsAdminModalOpen(true);
+        }}
+        onChatClick={() => {
+          setAdminInitialTab('chat');
+          setIsAdminModalOpen(true);
+        }}
       />
 
       {/* Main Subordinate Container Area */}
@@ -254,7 +263,12 @@ export default function App() {
         {/* Dynamic Bento workspace grid / Admin Workspace */}
         {userProfile?.role === "admin" || userProfile?.userId === "zVEwrk4m8XNueS0HiNRDIgMHwWm2" ? (
           <div className="w-full flex-1">
-            <AdminDashboard inline={true} />
+            <AdminDashboard 
+              inline={true} 
+              userProfile={userProfile} 
+              onUpdate={setUserProfile} 
+              initialTab={adminInitialTab}
+            />
           </div>
         ) : (
           <div className="flex flex-col lg:flex-row gap-8 items-start flex-1">
@@ -329,7 +343,12 @@ export default function App() {
       )}
 
       {isAdminModalOpen && (
-        <AdminDashboard onClose={() => setIsAdminModalOpen(false)} />
+        <AdminDashboard 
+          userProfile={userProfile} 
+          onUpdate={setUserProfile}
+          onClose={() => setIsAdminModalOpen(false)} 
+          initialTab={adminInitialTab}
+        />
       )}
       
       {isProfileModalOpen && userProfile && (

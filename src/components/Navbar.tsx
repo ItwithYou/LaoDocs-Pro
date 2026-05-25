@@ -1,7 +1,9 @@
-import { auth } from "../firebase";
+import { useEffect, useState } from "react";
+import { auth, db } from "../firebase";
 import { UserProfile } from "../types";
+import { collection, onSnapshot } from "firebase/firestore";
 import { useLanguage, useTheme } from "../contexts";
-import { FileText, LogOut, Moon, Sun, Languages, User, Sparkles, ShieldCheck, Droplet, Palette } from "lucide-react";
+import { FileText, LogOut, Moon, Sun, Languages, User, Sparkles, ShieldCheck, Droplet, Palette, MessageSquare } from "lucide-react";
 
 interface NavbarProps {
   userProfile: UserProfile | null;
@@ -10,11 +12,28 @@ interface NavbarProps {
   onLoginClick: () => void;
   onAdminClick?: () => void;
   onProfileClick?: () => void;
+  onChatClick?: () => void;
 }
 
-export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginClick, onAdminClick, onProfileClick }: NavbarProps) {
+export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginClick, onAdminClick, onProfileClick, onChatClick }: NavbarProps) {
   const { theme, setTheme } = useTheme();
   const { isLao, toggleLanguage } = useLanguage();
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  useEffect(() => {
+    const isAdmin = userProfile?.role === "admin" || userProfile?.userId === "zVEwrk4m8XNueS0HiNRDIgMHwWm2";
+    if (!isAdmin) return;
+
+    const unsubscribe = onSnapshot(collection(db, "chats"), (snapshot) => {
+      let unread = 0;
+      snapshot.forEach(doc => {
+        if (doc.data().unreadByAdmin) unread++;
+      });
+      setUnreadCount(unread);
+    });
+    return () => unsubscribe();
+  }, [userProfile]);
+
   const getBadgeStyle = (tier: string) => {
     switch (tier) {
       case "ultra":
@@ -91,14 +110,31 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
           {/* Subscription Badge */}
           <div className="flex items-center space-x-1 sm:space-x-2">
             {(userProfile?.email?.toLowerCase() === "norecord88@gmail.com" || userProfile?.role === "admin") && (
-              <button
-                onClick={onAdminClick}
-                className="hidden sm:flex items-center px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-full h-8 hover:bg-red-100 transition shadow-xs cursor-pointer select-none"
-                title="Admin Dashboard"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 mr-1" />
-                <span className="text-[10px] font-extrabold uppercase tracking-wide">Admin</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={onAdminClick}
+                  className="hidden sm:flex items-center px-3 py-1.5 bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-500/20 rounded-full h-8 hover:bg-red-100 transition shadow-xs cursor-pointer select-none"
+                  title="Admin Dashboard"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 mr-1" />
+                  <span className="text-[10px] font-extrabold uppercase tracking-wide">Admin</span>
+                </button>
+                <button
+                  onClick={onChatClick || onAdminClick}
+                  className="hidden sm:flex items-center px-2 py-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 rounded-full h-8 hover:bg-indigo-100 transition shadow-xs cursor-pointer select-none relative"
+                  title="Support Chat"
+                >
+                  <MessageSquare className="w-3.5 h-3.5" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-4 w-4 bg-red-500 text-[8px] text-white items-center justify-center font-bold">
+                        {unreadCount}
+                      </span>
+                    </span>
+                  )}
+                </button>
+              </div>
             )}
             
             <div className="hidden sm:flex items-center px-3 py-1 bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-800 rounded-full h-8">

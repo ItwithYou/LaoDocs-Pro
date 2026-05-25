@@ -66,12 +66,12 @@ export default function SupportChat({ userProfile, onLoginClick, inline = false,
   useEffect(() => {
     if (defaultTab) {
       setActiveTab(defaultTab);
-    } else if (isAdmin) {
+    } else if (isAdmin && !inline) {
       setActiveTab("admin-portal");
     } else {
       setActiveTab("user-chat");
     }
-  }, [isAdmin, defaultTab]);
+  }, [isAdmin, defaultTab, inline]);
 
   // Scroll to bottom helper
   const scrollToBottom = (refObj: React.RefObject<HTMLDivElement | null>) => {
@@ -351,12 +351,12 @@ export default function SupportChat({ userProfile, onLoginClick, inline = false,
   return (
     <>
       {/* 2. Chat interface Panel Modal */}
-      {isOpen && (
-        <div className={inline ? "w-full h-full bg-white dark:bg-slate-900 flex flex-col overflow-hidden" : "fixed bottom-24 right-6 w-full max-w-[370px] h-[525px] sm:h-[550px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[100] animate-in slide-in-from-bottom-5 fade-in duration-200"}>
+      {(isOpen || inline) && (
+        <div className={inline ? "w-full h-full bg-white dark:bg-slate-900 flex flex-col overflow-hidden relative" : "fixed bottom-24 right-6 w-full max-w-[370px] h-[525px] sm:h-[550px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl flex flex-col overflow-hidden z-[100] animate-in slide-in-from-bottom-5 fade-in duration-200"}>
           
           {/* USER CLIENT CHAT INTERFACE */}
           {activeTab === "user-chat" && (
-            <>
+            <div className="flex-1 flex flex-col min-h-0">
               {/* Header block */}
               {!inline && (
                 <div className="bg-gradient-to-r from-indigo-700 to-indigo-600 px-4 py-3.5 flex justify-between items-center text-white">
@@ -542,12 +542,12 @@ export default function SupportChat({ userProfile, onLoginClick, inline = false,
                   </div>
                 </form>
               )}
-            </>
+            </div>
           )}
 
           {/* ADMINISTRATORS CHAT LISTS AND RESPONSES PANEL */}
           {activeTab === "admin-portal" && (
-            <>
+            <div className="flex-1 flex flex-col min-h-0">
               {/* Header Title bar of admin */}
               {!inline && (
                 <div className="bg-slate-900 border-b border-slate-800 px-4 py-3 flex items-center justify-between text-white">
@@ -718,7 +718,7 @@ export default function SupportChat({ userProfile, onLoginClick, inline = false,
                   </form>
                 </div>
               )}
-            </>
+            </div>
           )}
 
         </div>

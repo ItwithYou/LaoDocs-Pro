@@ -320,46 +320,8 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                   </div>
                 </div>
               ) : (
-                /* CONDITION 2: USD CREDIT CARD / STRIPE PAYMENT LINK */
+                /* CONDITION 2: USD CREDIT CARD PAYMENT */
                 <div className="space-y-4 mb-5 animate-in fade-in duration-150">
-                  
-                  {/* 1. Real Stripe Gateway Integration Trigger */}
-                  <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800 text-white shadow-sm flex flex-col gap-2.5">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        <span className="w-2 h-2 rounded-full bg-indigo-400 animate-ping" />
-                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">STRIPE PORTAL DETECTED</span>
-                      </div>
-                      <span className="text-[11px] font-black text-indigo-400">${selectedPlan.priceUSD} USD</span>
-                    </div>
-                    
-                    <p className="text-[10px] text-slate-400 leading-normal">
-                      {isLao 
-                        ? "ສໍາລັບການຈ່າຍເງິນຜ່ານບັດເຄຣດິດ ທ່ານສາມາດຄລິກປຸ່ມລຸ່ມນີ້ເພື່ອໄປຫາໜ້າຊຳລະເງິນ Stripe ແທ້ ເພື່ອເຮັດການຊຳລະເງິນຢ່າງປອດໄພດ້ວຍບັດເຄຣດິດທົ່ວໂລກ." 
-                        : "Click below to open our live credit card gateway. Opens a secure Stripe Checkout tab with active 256-bit SSL encryption."}
-                    </p>
-
-                    <a
-                      href={selectedPlan.id === "pro" 
-                        ? ((import.meta as any).env?.VITE_STRIPE_PRO_URL || "https://buy.stripe.com/test_6oE00Q6O8csM5k4bII")
-                        : ((import.meta as any).env?.VITE_STRIPE_ULTRA_URL || "https://buy.stripe.com/test_cN214U2yScsM13S7st")
-                      }
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2 px-4 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-700 text-white text-center flex items-center justify-center space-x-1.5 transition duration-150 cursor-pointer shadow-xs"
-                    >
-                      <span>{isLao ? "ໄປຫາໜ້າຊຳລະ Stripe ບັດເຄຣດິດ" : "Go to Stripe Credit Card Checkout"}</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-
-                  <div className="relative flex py-1 items-center">
-                    <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                    <span className="flex-shrink mx-4 text-slate-400 text-[9px] uppercase font-extrabold tracking-widest">{isLao ? "ຫຼື ຈ່າຍໃນເວັບໂດຍກົງ" : "Or Pay Directly on Page"}</span>
-                    <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                  </div>
-
-                  {/* 2. Standard Credit Card direct form for fast testing */}
                   <div className="space-y-3.5 text-xs bg-white dark:bg-slate-900 p-4 border border-slate-150 dark:border-slate-800 rounded-2xl">
                     <div>
                       <label className="block text-slate-600 dark:text-slate-400 font-extrabold mb-1">{isLao ? "ຊື່ເທິງບັດ" : "NAME ON CARD"}</label>
@@ -368,6 +330,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                         value={cardName}
                         onChange={(e) => setCardName(e.target.value.toUpperCase())}
                         className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-slate-800 dark:text-slate-200 font-mono tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="CARDHOLDER NAME"
                       />
                     </div>
 
@@ -378,6 +341,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                         value={cardNo}
                         onChange={(e) => setCardNo(e.target.value)}
                         className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-slate-800 dark:text-slate-200 font-mono tracking-widest focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                        placeholder="4000 0000 0000 0000"
                       />
                     </div>
 
@@ -399,6 +363,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                           value={cvc}
                           onChange={(e) => setCvc(e.target.value)}
                           maxLength={3}
+                          placeholder="***"
                           className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 text-slate-800 dark:text-slate-200 font-mono text-center focus:outline-none focus:ring-1 focus:ring-indigo-500"
                         />
                       </div>
