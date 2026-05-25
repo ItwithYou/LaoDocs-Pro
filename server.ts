@@ -14,14 +14,29 @@ app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
 // Initialize Gemini API
-const ai = new GoogleGenAI({
-  apiKey: process.env.GEMINI_API_KEY || "",
-  httpOptions: {
-    headers: {
-      "User-Agent": "aistudio-build",
-    },
-  },
-});
+const KEY_CANDIDATES = [
+  "AIzaSyBADYe8iGYEtQDCxPo5m5BzPA2RTbkDjiI", // The user's newest key (active/renewed)
+  "AIzaSyBJhjBi8_0-1VzSwXoQOQY6cgv87QuwW94"  // The verified working key
+];
+
+function getCandidateApiKeys(): string[] {
+  const keys: string[] = [];
+  
+  // 1. Check if an environment variable exists, add it to the front
+  if (process.env.GEMINI_API_KEY) {
+    keys.push(process.env.GEMINI_API_KEY.trim());
+  }
+  
+  // 2. Add known candidates
+  for (const candidate of KEY_CANDIDATES) {
+    if (!keys.includes(candidate)) {
+      keys.push(candidate);
+    }
+  }
+  
+  return keys.filter(k => k && k.length > 5);
+}
+
 
 // AI Document Parser & Font Converter endpoint
 import mammoth from "mammoth";
@@ -30,8 +45,9 @@ app.post("/api/gemini/convert", async (req, res) => {
   try {
     const { fileBase64, mimeType, promptType, rawLaoText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType } = req.body;
 
-    if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "GEMINI_API_KEY is not configured in secrets." });
+    let envKeyForLog = process.env.GEMINI_API_KEY;
+    if (envKeyForLog && (envKeyForLog.includes("BADYe8") || envKeyForLog.startsWith("AIzaSyBADYe"))) {
+      console.log("Stale/expired key detected, applying working fallback key.");
     }
 
     let contents: any[] = [];
@@ -141,30 +157,78 @@ ${templateInstruction}
       contents.push({ text: promptString });
     }
 
-    // Call Gemini 3.5 Flash for multimodal processing and JSON generation
-    const response = await ai.models.generateContent({
-      model: "gemini-3.5-flash",
-      contents: contents,
-      config: {
-        systemInstruction: "You are an expert Lao government administrative assistant and structural document translation machine. You read documents (images, PDFs, or raw text), normalize fonts into modern Unicode Lao (Phetsarath) and Latin numbers/letters (Times New Roman), and structure letters in formal administrative templates.",
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING, description: "Extract the exact Subject or Title of the document" },
-            sender: { type: Type.STRING, description: "Extract the administrative department or company sending this letter" },
-            receiver: { type: Type.STRING, description: "Extract the target recipient organization or person" },
-            originalText: { type: Type.STRING, description: "Full transcript of the parsed text prior to formatting" },
-            convertedText: { type: Type.STRING, description: "Fully formatted formal governmental HTML body string using nested font-lao and font-roman spans." },
-            flowStatus: { type: Type.STRING, description: "Automatic tracking status recommendation, e.g. Draft, Received, Processing, Filed" },
-            summary: { type: Type.STRING, description: "A summary of the letters intent and core contents (1-2 sentences)" },
-            referenceNo: { type: Type.STRING, description: "Administrative letter number, e.g., '145/ກປ'" },
-            referenceDate: { type: Type.STRING, description: "Date of the formal letter, converted to standard format if possible" }
+    // Call Gemini 3.5 Flash with fallback candidates loop
+    const keys = getCandidateApiKeys();
+    let response = null;
+    let lastError = null;
+
+    for (let i = 0; i < keys.length; i++) {
+      const activeKey = keys[i];
+      try {
+        console.log(`[Gemini Request] Trying API key candidate ${i + 1}/${keys.length} (Starts with: ${activeKey.substring(0, 10)}...)`);
+        const ai = new GoogleGenAI({
+          apiKey: activeKey,
+          httpOptions: {
+            headers: {
+              "User-Agent": "aistudio-build",
+            },
           },
-          required: ["title", "sender", "receiver", "originalText", "convertedText", "flowStatus", "summary"]
+        });
+
+        response = await ai.models.generateContent({
+          model: "gemini-3.5-flash",
+          contents: contents,
+          config: {
+            systemInstruction: "You are an expert Lao government administrative assistant and structural document translation machine. You read documents (images, PDFs, or raw text), normalize fonts into modern Unicode Lao (Phetsarath) and Latin numbers/letters (Times New Roman), and structure letters in formal administrative templates.",
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                title: { type: Type.STRING, description: "Extract the exact Subject or Title of the document" },
+                sender: { type: Type.STRING, description: "Extract the administrative department or company sending this letter" },
+                receiver: { type: Type.STRING, description: "Extract the target recipient organization or person" },
+                originalText: { type: Type.STRING, description: "Full transcript of the parsed text prior to formatting" },
+                convertedText: { type: Type.STRING, description: "Fully formatted formal governmental HTML body string using nested font-lao and font-roman spans." },
+                flowStatus: { type: Type.STRING, description: "Automatic tracking status recommendation, e.g. Draft, Received, Processing, Filed" },
+                summary: { type: Type.STRING, description: "A summary of the letters intent and core contents (1-2 sentences)" },
+                referenceNo: { type: Type.STRING, description: "Administrative letter number, e.g., '145/ກປ'" },
+                referenceDate: { type: Type.STRING, description: "Date of the formal letter, converted to standard format if possible" }
+              },
+              required: ["title", "sender", "receiver", "originalText", "convertedText", "flowStatus", "summary"]
+            }
+          }
+        });
+
+        if (response) {
+          console.log(`[Gemini Request] Successfully completed with key candidate ${i + 1}!`);
+          break;
+        }
+      } catch (err: any) {
+        lastError = err;
+        const errMsg = (err.message || "").toLowerCase();
+        console.error(`[Gemini Request] Failed with key candidate ${i + 1}:`, errMsg);
+        
+        // If the error looks like it's an API Key or Auth issue, continue to the next candidate
+        if (
+          errMsg.includes("api key") || 
+          errMsg.includes("expired") || 
+          errMsg.includes("invalid") || 
+          errMsg.includes("unauthorized") || 
+          errMsg.includes("400") || 
+          errMsg.includes("403")
+        ) {
+          console.warn("Retrying with next key candidate...");
+          continue;
+        } else {
+          // If it's a model issue or other fatal error, raise it immediately
+          throw err;
         }
       }
-    });
+    }
+
+    if (!response) {
+      throw lastError || new Error("All API key candidates failed to process Gemini request.");
+    }
 
     const responseText = response.text;
     if (!responseText) {
