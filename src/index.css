@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Phetsarath:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: "Inter", "Phetsarath", ui-sans-serif, system-ui, sans-serif;
+  --font-lao: "Phetsarath", "Inter", sans-serif;
+  --font-roman: "Times New Roman", "Times", serif;
+  
+  --color-tiffany-50: #f2fbfb;
+  --color-tiffany-100: #d0f3f2;
+  --color-tiffany-200: #a2e8e6;
+  --color-tiffany-300: #65d7d3;
+  --color-tiffany-400: #2cbfba;
+  --color-tiffany-500: #0abab5;
+  --color-tiffany-600: #0d9692;
+  --color-tiffany-700: #107875;
+  --color-tiffany-800: #125f5e;
+  --color-tiffany-900: #134e4e;
+  --color-tiffany-950: #072d2e;
+
+  /* Custom blue-toned slate for deep blue dark mode */
+  --color-slate-950: #050b1a;
+  --color-slate-900: #081229;
+  --color-slate-850: #0d1a3a;
+  --color-slate-800: #132247;
+  --color-slate-700: #1d3363;
+}
+
+/* Custom styled helpers for converted typography */
+.font-lao {
+  font-family: "Phetsarath", "Inter", sans-serif !important;
+}
+
+.font-roman {
+  font-family: "Times New Roman", "Times", serif !important;
+}
+
+/* Standard government layouts */
+.gov-letter-preview {
+  background-color: #ffffff;
+  color: #111827;
+  font-size: 1rem;
+  line-height: 1.8;
+}
+
+.gov-letter-preview p {
+  margin-bottom: 0.75rem;
+}
+
+

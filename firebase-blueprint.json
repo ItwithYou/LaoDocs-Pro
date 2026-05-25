@@ -1,0 +1,47 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile metadata including subscription status",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "The UID matching request.auth.uid" },
+        "email": { "type": "string", "description": "Email address of the user" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "subscriptionTier": { "type": "string", "enum": ["free", "pro", "ultra"], "description": "Subscription tier of the user" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["userId", "email", "subscriptionTier", "createdAt"]
+    },
+    "Document": {
+      "title": "Document",
+      "description": "Laos formal documents, including sender, receiver, original text, and converted text",
+      "type": "object",
+      "properties": {
+        "documentId": { "type": "string", "description": "ID of the document" },
+        "ownerId": { "type": "string", "description": "The user UID that owns the document" },
+        "title": { "type": "string", "description": "Title or subject of the formal letter" },
+        "sender": { "type": "string", "description": "Sender organization or person" },
+        "receiver": { "type": "string", "description": "Receiver organization or person" },
+        "sourceType": { "type": "string", "description": "Source of conversion: text, image, or pdf" },
+        "originalText": { "type": "string", "description": "Original text before clean up or font conversion" },
+        "convertedText": { "type": "string", "description": "Cleaned up text with Phetsarath OT and Times New Roman fonts applied" },
+        "status": { "type": "string", "enum": ["draft", "saved", "final"], "description": "Tracking status of the document" },
+        "flowStatus": { "type": "string", "description": "Document tracking stage, e.g. Sent, Received, Processing, Filed" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Update timestamp" }
+      },
+      "required": ["documentId", "ownerId", "title", "status", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/documents/{documentId}": {
+      "schema": "Document",
+      "description": "Formal documents and letters"
+    }
+  }
+}

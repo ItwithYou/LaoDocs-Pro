@@ -1,0 +1,6 @@
+{
+  "name": "Lao Document Manager & Converter",
+  "description": "Securely manage, track, and convert Lao formal letters (old to new Lao Phetsarath OT, standard government formats, PDF/Image to Word OCR).",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

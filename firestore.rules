@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+    
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "norecord88@gmail.com" || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+      );
+    }
+
+    match /settings/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    
+
+    function isValidUser(data) {
+      return data.userId == request.auth.uid
+        && data.email is string && data.email.size() <= 200
+        && (data.displayName == null || (data.displayName is string && data.displayName.size() <= 200))
+        && (data.birthday == null || (data.birthday is string && data.birthday.size() <= 100))
+        && (data.profilePhoto == null || (data.profilePhoto is string && data.profilePhoto.size() <= 3000000))
+        && (data.subscriptionEnd == null || (data.subscriptionEnd is string) || (data.subscriptionEnd is timestamp))
+        && (data.subscriptionTier == 'free' || data.subscriptionTier == 'pro' || data.subscriptionTier == 'ultra');
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == userId);
+      // Create user details securely matching authenticated user
+      allow create: if isSignedIn() && (request.auth.uid == userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.subscriptionTier == (isAdmin() ? request.resource.data.subscriptionTier : 'free')
+        && (request.resource.data.role == null || request.resource.data.role == (isAdmin() ? request.resource.data.role : 'user'));
+      // Update subscriptions or names safely
+      allow update: if isAdmin() || (isSignedIn() && (request.auth.uid == userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (request.resource.data.role == null || request.resource.data.role == resource.data.role)
+        && request.resource.data.subscriptionTier == (isAdmin() ? request.resource.data.subscriptionTier : resource.data.subscriptionTier));
+      allow delete: if false;
+    }
+
+    match /subscriptionRequests/{reqId} {
+      allow read: if isAdmin() || (isSignedIn() && request.auth.uid == resource.data.userId);
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Document validation blueprint
+    function isValidDocument(data) {
+      return data.documentId is string && data.documentId.size() <= 128
+        && data.ownerId == request.auth.uid
+        && data.title is string && data.title.size() <= 200
+        && (data.sender == null || (data.sender is string && data.sender.size() <= 200))
+        && (data.receiver == null || (data.receiver is string && data.receiver.size() <= 200))
+        && (data.sourceType == null || (data.sourceType is string && data.sourceType.size() <= 50))
+        && (data.originalText == null || (data.originalText is string && data.originalText.size() <= 1000000))
+        && (data.convertedText == null || (data.convertedText is string && data.convertedText.size() <= 1000000))
+        && (data.status == 'draft' || data.status == 'saved' || data.status == 'final')
+        && (data.flowStatus == null || (data.flowStatus is string && data.flowStatus.size() <= 100));
+    }
+
+    // Document storage matches ownership
+    match /documents/{documentId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.ownerId == request.auth.uid);
+      // Creation rules with server timestamp
+      allow create: if isSignedIn() && isValidId(documentId)
+        && isValidDocument(request.resource.data)
+        // Ensure accurate server timestamp
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      // Updating existing documents securely
+      allow update: if isSignedIn() && isValidId(documentId)
+        && isValidDocument(request.resource.data)
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      // Delete documents safely
+      allow delete: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+  }
+}
