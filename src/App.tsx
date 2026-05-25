@@ -263,7 +263,7 @@ export default function App() {
                 <div>
                   <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
                     <Sparkles className="w-4 h-4 text-tiffany-500" />
-                    <span>{isLao ? 'ຫ້ອງເຮັດວຽກຕົວແປງເອກະສານ' : 'Conversion Workspace'}</span>
+                    <span>{isLao ? 'ເອກະສານອັດຕະໂນມັດ' : 'Conversion Workspace'}</span>
                   </h3>
                   <p className="text-[11px] text-slate-500 dark:text-slate-400">
                     {isLao ? 'ປ່ຽນຮູບພາບໃຫ້ເປັນຂໍ້ຄວາມພ້ອມທັງແປງຟອນເຂົ້າສູ່ລະບົບມາດຕະຖານ' : 'Transform screenshots to editable text under standard Lao administrative rules'}

@@ -212,6 +212,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
   // Determine limits
   const currentPlan = userProfile ? SUBSCRIPTION_PLANS.find(p => p.id === userProfile.subscriptionTier) : null;
   const hasWordExportPrivilege = userProfile && userProfile.subscriptionTier !== "free";
+  const isFreeUser = !userProfile || userProfile.subscriptionTier === "free";
 
   const getGuestConversionsLeft = () => {
     const val = localStorage.getItem("guestConversionsLeft");
@@ -275,14 +276,20 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
   const validateAndSetFiles = (selectedFiles: File[]) => {
     // Limit file size based on subscription tier
-    let maxSizeMB = 0.2; // Default for free/guest
+    let maxSizeMB = 0.2; // Default for guest
     let maxFiles = 1;
-    if (userProfile?.subscriptionTier === "ultra") {
-      maxSizeMB = 100;
-      maxFiles = 50;
-    } else if (userProfile?.subscriptionTier === "pro") {
-      maxSizeMB = 25;
-      maxFiles = 20;
+    if (userProfile) {
+      if (userProfile.subscriptionTier === "ultra") {
+        maxSizeMB = 100;
+        maxFiles = 50;
+      } else if (userProfile.subscriptionTier === "pro") {
+        maxSizeMB = 25;
+        maxFiles = 20;
+      } else {
+        // Free tier after sign in
+        maxSizeMB = 0.3;
+        maxFiles = 1;
+      }
     }
 
     if (!userProfile && selectedFiles.length > maxFiles) {
@@ -405,7 +412,45 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
     }
   };
 
-  const handleConvertAction = async () => {
+  const getDailyToolUsage = (toolName: string) => {
+    const today = new Date().toDateString();
+    const stored = localStorage.getItem(`daily_usage_${toolName}`);
+    if (!stored) return 0;
+    try {
+      const parsed = JSON.parse(stored);
+      if (parsed.date === today) {
+        return parsed.count;
+      }
+    } catch (e) {
+      // ignore
+    }
+    return 0;
+  };
+
+  const incrementDailyToolUsage = (toolName: string) => {
+    const today = new Date().toDateString();
+    const currentCount = getDailyToolUsage(toolName);
+    localStorage.setItem(`daily_usage_${toolName}`, JSON.stringify({
+      date: today,
+      count: currentCount + 1
+    }));
+  };
+
+  const handleConvertAction = async (promptTypeArg: string = "ocr") => {
+    const isFreeUser = !userProfile || userProfile.subscriptionTier === "free";
+
+    if (isFreeUser && (promptTypeArg === "format-original" || promptTypeArg === "ocr")) {
+      const toolLabel = promptTypeArg === "format-original" ? "Format Original Language" : "Translate & Format to Lao";
+      const toolLabelLao = promptTypeArg === "format-original" ? "ຈັດຮູບແບບພາສາເດີມ" : "ແປເປັນລາວດ້ວຍ AI";
+      if (getDailyToolUsage(promptTypeArg) >= 1) {
+        setParsingError(`ຂໍອະໄພ, ເຄື່ອງມື "${toolLabelLao}" ສາມາດນຳໃຊ້ໄດ້ 1 ຄັ້ງຕໍ່ມື້ສຳລັບທົດລອງເວີຊັນຟຣີ. ກະລຸນາອັບເກຣດແພັກເກດຂອງທ່ານເພື່ອປົດລ໋ອກການນຳໃຊ້ແບບບໍ່ຈຳກັດ! / You have reached the daily limit of 1 conversion per day for "${toolLabel}" on the free version. Please upgrade to Pro or Ultra for unlimited access.`);
+        if (onUpgradeClick) {
+          onUpgradeClick();
+        }
+        return;
+      }
+    }
+
     if (!userProfile && guestConversionsLeft <= 0) {
       setParsingError("You have used all 3 guest trials. Please log in or upgrade to continue.");
       return;
@@ -446,7 +491,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
           const payload = {
             fileBase64: base64Data,
             mimeType: f.type,
-            promptType: "ocr",
+            promptType: promptTypeArg,
           };
           const data = await fetchBackend("/api/gemini/convert", payload);
           data.title = f.name; // Use filename for title
@@ -459,6 +504,9 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         }
         
         if (convertedDocs.length > 0) {
+          if (isFreeUser && (promptTypeArg === "format-original" || promptTypeArg === "ocr")) {
+            incrementDailyToolUsage(promptTypeArg);
+          }
           setConvertedResult(convertedDocs[0]); // Preview first one
           if (userProfile && convertedDocs.length > 1) {
             for (const cDoc of convertedDocs) {
@@ -1284,7 +1332,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                     </div>
 
                     <p className="text-[9px] text-slate-400">
-                      Supports high-fidelity PDF, PHOTO, TXT. Max {(userProfile?.subscriptionTier === "ultra") ? 100 : (userProfile?.subscriptionTier === "pro") ? 25 : 0.2}MB.
+                      Supports high-fidelity PDF, PHOTO, TXT. Max {(userProfile?.subscriptionTier === "ultra") ? 100 : (userProfile?.subscriptionTier === "pro") ? 25 : (userProfile ? 0.3 : 0.2)}MB.
                     </p>
                   </div>
                 )}
@@ -1317,52 +1365,168 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
             {/* Execute Button */}
             {(activeTab === "upload" || activeTab === "text") && (
-              <div className="pt-2 flex items-center justify-between border-t border-slate-100 dark:border-slate-800 mt-6">
-                <div className="flex flex-col">
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    Smart Auto Documents
-                  </span>
-                  {!userProfile && (
-                    <span className={`mt-0.5 ${guestConversionsLeft > 0 ? 'text-[10px] font-bold text-indigo-600' : 'text-[8px] font-thin text-red-500'}`}>
+              <div className="pt-4 border-t border-slate-100 dark:border-slate-800 mt-6">
+                {!userProfile && (
+                  <div className="mb-4 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-400 font-mono">Smart Auto Documents</span>
+                    <span className={`text-[10px] font-bold ${guestConversionsLeft > 0 ? 'text-indigo-600 dark:text-indigo-400' : 'text-red-500'}`}>
                       GUEST TRIALS LEFT: {guestConversionsLeft}/3
                     </span>
-                  )}
-                </div>
+                  </div>
+                )}
+                
+                {activeTab === "text" ? (
+                  <div className="flex items-center justify-between w-full">
+                    <span className="text-[10px] text-slate-400 font-mono hidden sm:inline-block">Raw Text Font Normalizer</span>
+                    <div className="flex items-center gap-3 ml-auto">
+                      {textOutput && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(textOutput);
+                            setIsCopied(true);
+                            setTimeout(() => setIsCopied(false), 2000);
+                          }}
+                          className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2"
+                        >
+                          {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                          <span className="text-xs font-bold hidden sm:block">{isCopied ? "Copied" : "Copy"}</span>
+                        </button>
+                      )}
+                      <button
+                        disabled={isProcessing}
+                        onClick={() => handleConvertAction("font-convert")}
+                        className="bg-slate-900 text-white hover:bg-slate-850 py-2.5 px-6 rounded-xl font-bold transition flex items-center space-x-2 shadow-xs cursor-pointer select-none disabled:opacity-75"
+                      >
+                        {isProcessing ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                            <span>ກຳລັງສະແກນວິເຄາະ...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Languages className="w-4 h-4" />
+                            <span>ແປງເອກະສານ / Convert & Format</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* 3 Custom Buttons for File Upload */
+                  <div className="space-y-4">
+                    <div className="text-xs font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5 justify-between">
+                      <span className="flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
+                        ເລືອກຮູບແບບການປ່ຽນແປງເອກະສານ / Choose AI Mode
+                      </span>
+                      {files.length === 0 && (
+                        <span className="text-[10.5px] font-medium text-amber-605 dark:text-amber-400 animate-pulse bg-amber-50 dark:bg-amber-950/20 px-2 py-0.5 rounded-md">
+                          * ອັບໂຫຼດໄຟລ໌ກ່ອນຈຶ່ງຈະສາມາດກົດໄດ້
+                        </span>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                      {/* Button 1: Retype verbatim */}
+                      <button
+                        disabled={isProcessing || files.length === 0}
+                        onClick={() => handleConvertAction("retype")}
+                        className="flex flex-col items-start p-3.5 text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-50 dark:bg-slate-900/40 dark:hover:bg-slate-800/60 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-sm select-none"
+                      >
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <div className="p-1.5 bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 rounded-lg shrink-0">
+                            <FileText className="w-4 h-4" />
+                          </div>
+                          <span className="text-xs font-bold text-slate-805 dark:text-white leading-tight">
+                            ພິມຄືນຕາມເດີມ
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-normal mb-1 font-semibold">
+                          Retype All (Verbatim)
+                        </p>
+                        <span className="text-[9px] text-slate-400 leading-tight">
+                          ພິມຄືນທຸກຢ່າງ ຕາມພາສາຕົ້ນສະບັບເດີມ (ອັງກິດ, ຈີນ, ລາວ...) ໂດຍຮັກສາຮູບແບບເດີມ
+                        </span>
+                      </button>
 
-                <div className="flex items-center gap-3">
-                  {activeTab === "text" && textOutput && (
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(textOutput);
-                        setIsCopied(true);
-                        setTimeout(() => setIsCopied(false), 2000);
-                      }}
-                      className="text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100 p-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition flex items-center gap-2"
-                      title="Copy Converted Text"
-                    >
-                      {isCopied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
-                      <span className="text-xs font-bold hidden sm:block">{isCopied ? "Copied" : "Copy"}</span>
-                    </button>
-                  )}
-                  <button
-                    disabled={isProcessing}
-                    onClick={handleConvertAction}
-                    className="bg-slate-900 text-white hover:bg-slate-850 py-2.5 px-6 rounded-xl font-bold transition flex items-center space-x-2 shadow-xs cursor-pointer select-none disabled:opacity-75"
-                    id="convert-trigger-btn"
-                  >
-                    {isProcessing ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                        <span>ກຳລັງສະແກນວິເຄາະ / Core Scanning...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Languages className="w-4 h-4" />
-                        <span>{activeTab === "text" ? "Convert" : "ແປງເອກະສານ / Convert & Format"}</span>
-                      </>
+                      {/* Button 2: Format in original language */}
+                      <button
+                        disabled={isProcessing || files.length === 0}
+                        onClick={() => handleConvertAction("format-original")}
+                        className="flex flex-col items-start p-3.5 text-left rounded-2xl border border-slate-200 dark:border-slate-800 bg-white hover:bg-slate-50 dark:bg-slate-900/40 dark:hover:bg-slate-800/60 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-sm select-none"
+                      >
+                        <div className="flex items-center gap-2 mb-1.5 w-full">
+                          <div className="p-1.5 bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 rounded-lg shrink-0">
+                            <RefreshCw className="w-4 h-4" />
+                          </div>
+                          <span className="text-xs font-bold text-slate-805 dark:text-white leading-tight">
+                            ຈັດຮູບແບບພາສາເດີມ
+                          </span>
+                          {isFreeUser && (
+                            <span className="ml-auto text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold">
+                              {getDailyToolUsage("format-original") >= 1 ? "1/1 ໝົດ" : "0/1 ວ່າງ"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 leading-normal mb-1 font-semibold">
+                          Format Original Language
+                        </p>
+                        <span className="text-[9px] text-slate-400 leading-tight">
+                          ຈັດຮູບແບບເອກະສານທາງການ ໂດຍຮັກສາພາສາຕົ້ນສະບັບເດີມ ປັບຕົວໜັງສືໃຫ້ງາມ
+                        </span>
+                        {isFreeUser && (
+                          <span className="mt-1.5 text-[8.5px] text-amber-650 dark:text-amber-400 font-bold">
+                            * ເວີຊັນຟຣີ: ​ຈຳ​ກັດ 1 ຄັ້ງ/ມື້
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Button 3: Translate to Lao AI */}
+                      <button
+                        disabled={isProcessing || files.length === 0}
+                        onClick={() => handleConvertAction("ocr")}
+                        className="flex flex-col items-start p-3.5 text-left rounded-2xl border border-indigo-200 dark:border-indigo-850 bg-indigo-50/20 hover:bg-indigo-50/40 dark:bg-indigo-950/10 dark:hover:bg-indigo-950/20 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-md transition-all duration-200 relative overflow-hidden group select-none"
+                      >
+                        <div className="absolute top-0 right-0 p-1 bg-indigo-600 text-[8px] text-white font-bold rounded-bl-lg tracking-wider uppercase">
+                          AI Best
+                        </div>
+                        <div className="flex items-center gap-2 mb-1.5 w-full">
+                          <div className="p-1.5 bg-indigo-600 text-white rounded-lg shrink-0">
+                            <Languages className="w-4 h-4" />
+                          </div>
+                          <span className="text-xs font-bold text-indigo-900 dark:text-indigo-400 leading-tight">
+                            ແປເປັນລາວດ້ວຍ AI
+                          </span>
+                          {isFreeUser && (
+                            <span className="ml-auto mr-12 text-[8px] bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded font-mono font-bold">
+                              {getDailyToolUsage("ocr") >= 1 ? "1/1 ໝົດ" : "0/1 ວ່າງ"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-normal mb-1 font-semibold">
+                          Translate & Format to Lao
+                        </p>
+                        <span className="text-[9px] text-indigo-600/80 dark:text-indigo-400/80 leading-tight">
+                          ແປທຸກພາສາ ແລະ ຈັດຮູບແບບອອກມາເປັນຮ່າງເອກະສານທາງການລາວທີ່ສົມບູນ
+                        </span>
+                        {isFreeUser && (
+                          <span className="mt-1.5 text-[8.5px] text-amber-650 dark:text-indigo-400 font-bold">
+                            * ເວີຊັນຟຣີ: ​ຈຳ​ກັດ 1 ຄັ້ງ/ມື້
+                          </span>
+                        )}
+                      </button>
+                    </div>
+
+                    {isProcessing && (
+                      <div className="p-3.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-150 dark:border-indigo-900/40 rounded-2xl flex items-center gap-3 animate-pulse mt-3">
+                        <div className="w-4 h-4 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin shrink-0" />
+                        <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300">
+                          ກຳລັງສະແກນວິເຄາະ ແລະ ແປງເອກະສານດ້ວຍ AI... / AI Processing in Progress...
+                        </span>
+                      </div>
                     )}
-                  </button>
-                </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

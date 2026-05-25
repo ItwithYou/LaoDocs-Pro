@@ -147,12 +147,39 @@ ${processedRawText}
         },
       };
 
-      promptString = `
+      let promptString = "";
+      
+      if (promptType === "retype") {
+        promptString = `
+You are given an uploaded ${isPdf ? "PDF" : "Image"} document.
+Your task is to transcribe/retype the entire document text verbatim.
+CRITICAL DIRECTIONS:
+1. Do NOT translate. If the photo or document is in English, type it all in English. If it is in Chinese, type it all in Chinese. If it is in Lao, type it all in Lao.
+2. Type ALL content. Do not paraphrase, shorten, or omit any sentences or paragraphs.
+3. Save the SAME layout and format with the original document (including line breaks, paragraphs, lists, aligned sections, and header titles).
+4. For beautiful typography, wrap characters in appropriate span tags:
+   - Wrap Lao characters in <span class="font-lao">Lao text here</span>
+   - Wrap English/Latin characters, numbers, Chinese, or other languages/symbols in <span class="font-roman">text here</span>
+`;
+      } else if (promptType === "format-original") {
+        promptString = `
+You are given an uploaded ${isPdf ? "PDF" : "Image"} document.
+Your task is to transcribe and format the document in its ORIGINAL language.
+CRITICAL DIRECTIONS:
+1. Do NOT translate from its source language (English, Chinese, Lao, etc.) into Lao. Keep the text verbatim in its original language.
+2. Apply our standard beautiful formal administrative document formatting (headers, alignments, spacing, paragraphs, table structures, and signatory blocks) while fully retaining the original language of the text.
+3. For beautiful typography, wrap characters in appropriate span tags:
+   - Wrap Lao characters in <span class="font-lao">Lao text here</span>
+   - Wrap English/Latin characters, numbers, Chinese, or other languages/symbols in <span class="font-roman">text here</span>
+`;
+      } else {
+        promptString = `
 You are given an uploaded ${isPdf ? "PDF" : "Image"} document containing a Lao formal letter or business log.
 Perform OCR, correct any transcription errors, convert any legacy Lao fonts (typewriter or legacy ASCII representations) to modern unicode Lao language, and align the output with standard Lao government administration patterns.
 ${formatInstruction}
 ${templateInstruction}
 `;
+      }
       contents.push(documentPart);
       contents.push({ text: promptString });
     }
