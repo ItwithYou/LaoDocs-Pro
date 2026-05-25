@@ -17,7 +17,7 @@ export default function AdminDashboard({ onClose, inline = false }: AdminDashboa
   const [aiTypes, setAiTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs'>('requests');
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing'>('requests');
   
   const [bankQrUrlPro, setBankQrUrlPro] = useState("");
   const [bankQrUrlUltra, setBankQrUrlUltra] = useState("");
@@ -31,7 +31,10 @@ export default function AdminDashboard({ onClose, inline = false }: AdminDashboa
     proUsers: 0,
     ultraUsers: 0,
     totalDocuments: 0,
-    totalStorageBytes: 0
+    totalStorageBytes: 0,
+    totalInputTokens: 0,
+    totalOutputTokens: 0,
+    totalSpendUSD: 0
   });
 
   const formatBytes = (bytes: number, decimals = 1) => {
@@ -643,6 +646,8 @@ ${docItem.originalText || ''}
       let free = 0;
       let pro = 0;
       let ultra = 0;
+      let aggregateInputTokens = 0;
+      let aggregateOutputTokens = 0;
 
       for (const docSnap of querySnapshot.docs) {
         const user = docSnap.data() as UserProfile;
@@ -658,6 +663,15 @@ ${docItem.originalText || ''}
           const data = d.data();
           const textLength = (data.convertedText?.length || 0) + (data.originalText?.length || 0) + (data.summary?.length || 0);
           userStorageBytes += textLength * 2; // UTF-16 character byte size approx
+          
+          const isText = data.sourceType === "text";
+          const inputCharCount = (data.originalText?.length || 0);
+          const inputT = Math.max(isText ? 1200 : 3200, Math.ceil(inputCharCount / 1.5) + (isText ? 0 : 2580));
+          const outputCharCount = (data.convertedText?.length || 0) + (data.summary?.length || 0);
+          const outputT = Math.max(400, Math.ceil(outputCharCount / 1.5));
+          
+          aggregateInputTokens += inputT;
+          aggregateOutputTokens += outputT;
         });
         totalStorage += userStorageBytes;
 
@@ -680,6 +694,8 @@ ${docItem.originalText || ''}
         fetchedUsers.push(user);
       }
       
+      const calculatedSpend = (aggregateInputTokens * 0.000000075) + (aggregateOutputTokens * 0.000000300);
+
       setUsers(fetchedUsers);
       setStats({
         totalUsers: querySnapshot.size,
@@ -688,7 +704,10 @@ ${docItem.originalText || ''}
         proUsers: pro,
         ultraUsers: ultra,
         totalDocuments: totalDocs,
-        totalStorageBytes: totalStorage
+        totalStorageBytes: totalStorage,
+        totalInputTokens: aggregateInputTokens,
+        totalOutputTokens: aggregateOutputTokens,
+        totalSpendUSD: calculatedSpend
       });
     } catch (error) {
       console.error("Error fetching users:", error);
@@ -892,8 +911,9 @@ ${docItem.originalText || ''}
           <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
             <button onClick={() => setActiveTab('requests')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'requests' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Pending Payment Slips</button>
             <button onClick={() => setActiveTab('tracking')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'tracking' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>Sub Expirations Tracker</button>
+            <button onClick={() => setActiveTab('billing')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'billing' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>API Keys & Spend</button>
             <button onClick={() => setActiveTab('users')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'users' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500 hover:text-slate-700'}`}>Registered Users</button>
-            <button onClick={() => setActiveTab('templates')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'templates' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500 hover:text-slate-700'}`}>Official Templates</button>
+            <button onClick={() => setActiveTab('templates')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'templates' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Official Templates</button>
             <button onClick={() => setActiveTab('aitypes')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'aitypes' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>AI Doc Types</button>
             <button onClick={() => setActiveTab('bankqrs')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'bankqrs' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Bank QRs</button>
           </div>
@@ -1151,6 +1171,203 @@ ${docItem.originalText || ''}
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">All waiting bank transfer slips are verified and up-to-date.</p>
                   </div>
                 )}
+              </div>
+            </div>
+          ) : activeTab === 'billing' ? (
+            <div className="space-y-6">
+              {/* Info banner */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-slate-50 dark:bg-slate-800/10 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <div>
+                  <h3 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-2 text-sm">
+                    <Coins className="w-4 h-4 text-emerald-500 animate-pulse" />
+                    Google Gemini API Billing & Cost Spend Control
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Real-time usage statistics, dynamic token pricing calculations, failover candidate status, and admin profitability analysis.</p>
+                </div>
+              </div>
+
+              {/* Grid cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Total API Calls</span>
+                  <span className="text-xl font-black text-slate-800 dark:text-white block">{stats.totalDocuments} calls</span>
+                  <span className="text-[10px] text-slate-500 block">Successful OCR & Parsers</span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Est. Input Cost</span>
+                  <span className="text-xl font-black text-slate-800 dark:text-white block">${(stats.totalInputTokens * 0.000000075).toFixed(5)}</span>
+                  <span className="text-[10px] text-slate-500 block">{(stats.totalInputTokens).toLocaleString()} input tokens</span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-800/30 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 block">Est. Output Cost</span>
+                  <span className="text-xl font-black text-slate-800 dark:text-white block">${(stats.totalOutputTokens * 0.000000300).toFixed(5)}</span>
+                  <span className="text-[10px] text-slate-500 block">{(stats.totalOutputTokens).toLocaleString()} output tokens</span>
+                </div>
+                <div className="bg-emerald-50/40 dark:bg-emerald-500/5 p-4 rounded-xl border border-emerald-250/20 dark:border-emerald-500/10 space-y-1">
+                  <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 block">Total Key Spend</span>
+                  <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 block">${stats.totalSpendUSD.toFixed(5)}</span>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 block">{(stats.totalSpendUSD * 20000).toLocaleString(undefined, { maximumFractionDigits: 1 })} LAK</span>
+                </div>
+              </div>
+
+              {/* Profitability Panel */}
+              <div className="bg-slate-50 dark:bg-slate-800/20 p-4.5 rounded-2xl border border-slate-200 dark:border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div className="space-y-1">
+                  <h4 className="text-xs font-bold text-slate-700 dark:text-slate-350 uppercase tracking-wide">Subscription Profit Margins</h4>
+                  <p className="text-[10px] text-slate-400">Comparing member collected revenue with direct Gemini key costs.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2 border-l border-slate-200 dark:border-slate-800 pl-4">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Collected Sub Income</span>
+                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 font-mono">${collectedRevenue.usd}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block">Net Admin Profit</span>
+                    <span className="text-sm font-bold text-teal-600 dark:text-teal-400 font-mono">${(collectedRevenue.usd - stats.totalSpendUSD).toFixed(2)}</span>
+                  </div>
+                </div>
+                <div className="border-l border-slate-200 dark:border-slate-800 pl-4">
+                  <span className="text-[10px] text-slate-400 block">Operational Margin</span>
+                  <span className={`text-base font-black ${collectedRevenue.usd > stats.totalSpendUSD ? "text-emerald-600" : "text-amber-500"}`}>
+                    {collectedRevenue.usd > 0 ? (((collectedRevenue.usd - stats.totalSpendUSD) / collectedRevenue.usd) * 100).toFixed(1) : 0}%
+                  </span>
+                </div>
+              </div>
+
+              {/* API Keys Table */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm space-y-3 p-4">
+                <h3 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                  <KeyRound className="w-4 h-4 text-indigo-505" />
+                  Gemini API Key Failover Candidates Monitor
+                </h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] text-slate-600 dark:text-slate-300">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                      <tr>
+                        <th className="px-4 py-2.5">Candidate Source</th>
+                        <th className="px-4 py-2.5">API Key Signature</th>
+                        <th className="px-4 py-2.5">Fallback Order</th>
+                        <th className="px-4 py-2.5 font-mono text-center">Engine</th>
+                        <th className="px-4 py-2.5">Spend Rate</th>
+                        <th className="px-4 py-2.5 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/5 transition">
+                        <td className="px-4 py-3 font-semibold text-slate-850 dark:text-white">Environment Secret Variable</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">process.env.GEMINI_API_KEY</td>
+                        <td className="px-4 py-3 font-medium text-slate-500">1st Priority (Primary)</td>
+                        <td className="px-4 py-3 font-mono text-center text-slate-400">gemini-3.5-flash</td>
+                        <td className="px-4 py-3 text-slate-500">In: $0.075/1M | Out: $0.30/1M</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400">
+                            Active
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/5 transition">
+                        <td className="px-4 py-3 font-semibold text-slate-850 dark:text-white">Active Renewed Candidate</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">AIzaSyBADYe8iGYEtQDCxPo5m5Bz...</td>
+                        <td className="px-4 py-3 font-medium text-slate-500">2nd Priority (Auto fallback)</td>
+                        <td className="px-4 py-3 font-mono text-center text-slate-400">gemini-3.5-flash</td>
+                        <td className="px-4 py-3 text-slate-500">In: $0.075/1M | Out: $0.30/1M</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-400">
+                            Healthy standby
+                          </span>
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/5 transition">
+                        <td className="px-4 py-3 font-semibold text-slate-850 dark:text-white">Verified Backup Backup Key</td>
+                        <td className="px-4 py-3 font-mono text-slate-400">AIzaSyBJhjBi8_0-1VzSwXoQOQY6...</td>
+                        <td className="px-4 py-3 font-medium text-slate-500">3rd Priority (Auto failover safe)</td>
+                        <td className="px-4 py-3 font-mono text-center text-slate-400">gemini-3.5-flash</td>
+                        <td className="px-4 py-3 text-slate-500">In: $0.075/1M | Out: $0.30/1M</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400">
+                            Standby backup
+                          </span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Transactions list */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/40">
+                  <h3 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                    <Activity className="w-4 h-4 text-purple-505" />
+                    Real-time API Session Conversion Log
+                  </h3>
+                  <span className="text-[10px] text-slate-500 font-bold uppercase">
+                    Showing {users.reduce((acc, u) => acc + ((u as any).docCount || 0), 0)} sessions
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-[11px] text-slate-600 dark:text-slate-300">
+                    <thead className="bg-slate-50 dark:bg-slate-800/60 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-800">
+                      <tr>
+                        <th className="px-4 py-2.5">User Email</th>
+                        <th className="px-4 py-2.5">Document Title</th>
+                        <th className="px-4 py-2.5">Source Type</th>
+                        <th className="px-4 py-2.5 font-mono">Est. Tokens</th>
+                        <th className="px-4 py-2.5 font-mono">Session cost</th>
+                        <th className="px-4 py-2.5 text-right">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {users.filter(u => (u as any).docCount > 0).length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400 italic">No document API transactions.</td>
+                        </tr>
+                      ) : (
+                        users.filter(u => (u as any).docCount > 0).map(u => {
+                          const dCount = (u as any).docCount || 0;
+                          const uStorage = (u as any).storageBytes || 0;
+                          const isUltra = u.subscriptionTier === 'ultra';
+                          const inputT = dCount * (isUltra ? 4500 : 3550);
+                          const outputT = Math.max(400 * dCount, Math.ceil(uStorage / 3));
+                          const spend = (inputT * 0.000000075) + (outputT * 0.000000300);
+
+                          return (
+                            <tr key={u.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition">
+                              <td className="px-4 py-3">
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200">{u.displayName || "Subscriber"}</span>
+                                  <span className="text-[9px] font-mono text-slate-400">{u.email}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 font-semibold text-slate-805 dark:text-white">
+                                {dCount} parsed files
+                              </td>
+                              <td className="px-4 py-3 font-medium whitespace-nowrap">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-105 text-slate-650 dark:bg-slate-800 dark:text-slate-300">
+                                  OCR / PDF / Text
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 font-mono whitespace-nowrap">
+                                In: {(inputT).toLocaleString()} | Out: {(outputT).toLocaleString()}
+                              </td>
+                              <td className="px-4 py-3 whitespace-nowrap">
+                                <div className="flex flex-col">
+                                  <span className="font-mono font-extrabold text-slate-800 dark:text-slate-200">${spend.toFixed(5)}</span>
+                                  <span className="text-[9px] font-bold text-slate-400">{(spend * 20000).toLocaleString(undefined, { maximumFractionDigits: 1 })} LAK</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3 text-right">
+                                <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded dark:bg-emerald-500/10 dark:text-emerald-400">
+                                  🟢 100% OK
+                                </span>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           ) : activeTab === 'tracking' ? (

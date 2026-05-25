@@ -356,8 +356,12 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
       }
       return data;
     } catch (err: any) {
-      if (err.message === "HOSTINGER_STATIC_ROUTING_ERROR") {
-        throw new Error("HOSTINGER_DEPLOYMENT_ERROR");
+      if (err.message === "HOSTINGER_STATIC_ROUTING_ERROR" || err.message === "HOSTINGER_DEPLOYMENT_ERROR" || (err.message && err.message.includes("HOSTINGER"))) {
+        throw new Error("connection problem");
+      }
+      const msg = (err.message || "").toLowerCase();
+      if (msg.includes("fetch") || msg.includes("network") || msg.includes("conn") || msg.includes("failed to fetch")) {
+        throw new Error("connection problem");
       }
       throw err;
     }
@@ -1045,7 +1049,7 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
                   if (onUpgradeClick) {
                     onUpgradeClick();
                   } else {
-                    setParsingError("Please upgrade to Pro or Ultra to access Official Templates.");
+                    setParsingError("Please upgrade to Pro or Ultra to use Document Templates.");
                   }
                   return;
                 }
@@ -1073,45 +1077,19 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
           </div>
 
           <div className="p-6 text-xs space-y-5">
-            {parsingError && parsingError.includes("HOSTINGER_DEPLOYMENT_ERROR") ? (
-              <div className="p-5 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/50 rounded-2xl text-slate-800 dark:text-slate-200 space-y-4 shadow-sm">
-                <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-bold text-sm">
-                  <AlertCircle className="w-5 h-5 shrink-0" />
-                  <span>ຂໍ້ຜິດພາດໃນການເຊື່ອມຕໍ່ Backend / API Connection Blocker</span>
+            {parsingError && (
+              <div 
+                id="doc-conversion-error-banner"
+                className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-150 dark:border-red-900/40 rounded-2xl text-red-650 flex items-start gap-2.5 shadow-sm"
+              >
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600 dark:text-red-400" />
+                <div className="flex-1">
+                  <span className="font-bold text-[12px] block leading-normal whitespace-pre-line">
+                    {parsingError.toLowerCase().includes("connection")
+                      ? "ເກີດບັນຫາໃນການເຊື່ອມຕໍ່ (connection problem)"
+                      : parsingError}
+                  </span>
                 </div>
-                
-                <p className="text-xs leading-relaxed">
-                  <strong>ສາເຫດ:</strong> ລະບົບໄດ້ຮັບໄຟລ໌ HTML ແທນທີ່ຈະເປັນ JSON. ນີ້ໝາຍຄວາມວ່າ Server Node.js (Express) ຍັງບໍ່ທັນຖືກເປີດໃຊ້ງານ ຫຼື ຕັ້ງຄ່າບໍ່ຖືກຕ້ອງໃນລະບົບ Hostinger ຂອງທ່ານ (ເຮັດໃຫ້ການຮຽກຮ້ອງ API ຖືກສົ່ງໄປຫາໜ້າ index.html ຂອງ Static app).
-                </p>
-                
-                <div className="p-4 bg-white dark:bg-slate-800 rounded-xl space-y-2 border border-slate-200 dark:border-slate-700 text-[11px]">
-                  <p className="font-bold text-slate-900 dark:text-slate-100 mb-1">🛠️ ວິທີແກ້ໄຂເທື່ອລະຂັ້ນຕອນ (How to fix on Hostinger):</p>
-                  <ol className="list-decimal pl-4 space-y-2 leading-relaxed">
-                    <li>
-                      <strong>ເປີດໃຊ້ງານ Node.js App:</strong> ເຂົ້າໄປທີ່ <strong>Hostinger hPanel</strong> &gt; ຄົ້ນຫາ <strong>"Node.js"</strong> &gt; ເລືອກສ້າງ Node.js Application ໃໝ່.
-                    </li>
-                    <li>
-                      <strong>ກຳນົດໄຟລ໌ເລີ່ມຕົ້ນ (Entry point):</strong> ກຳນົດ Entry File ໃຫ້ຊີ້ໄປຫາ <code>dist/server.cjs</code> (ຫຼື <code>server.ts</code> ຖ້າທ່ານໃຊ້ <code>tsx</code>) ແລະ ກວດເບິ່ງໃຫ້ແນ່ໃຈວ່າ port ຖືກຕ້ອງ.
-                    </li>
-                    <li>
-                      <strong>ເພີ່ມ Environment Variable / key ລັບ:</strong> ໃນ Dashboard ຂອງ Hostinger, ຕັ້ງຄ່າຕົວປ່ຽນສະພາບແວດລ້ອມ (Environment Variable) ເພື່ອໃຫ້ Gemini ສາມາດເຮັດວຽກໄດ້:
-                      <div className="mt-1 bg-slate-100 dark:bg-slate-900 p-1 px-2 rounded font-mono text-[10px] select-all inline-block text-slate-700 dark:text-slate-300">
-                        GEMINI_API_KEY=YOUR_ACTUAL_GEMINI_KEY
-                      </div>
-                    </li>
-                    <li>
-                      <strong>ສ້າງ Build ຫຼ້າສຸດ:</strong> ໃຫ້ແນ່ໃຈວ່າໄດ້ອັບໂຫຼດທັງໝົດໂຟເດີ <code>dist</code> (ທີ່ໄດ້ມາຈາກການ <code>npm run build</code>) ໄປຍັງ server.
-                    </li>
-                    <li>
-                      <strong>ກວດສອບ Google Sign-In:</strong> ຢ່າລືມເພີ່ມ <code>laodocs.com</code> ເຂົ້າໃນ <strong>Firebase Console &gt; Authentication &gt; Settings &gt; Authorized Domains</strong> (ແລະ <strong>Google Cloud Credentials OAuth</strong> ດ້ວຍ) ເພື່ອປ້ອງກັນປ໊ອບອັບຫາຍໄປ!
-                    </li>
-                  </ol>
-                </div>
-              </div>
-            ) : parsingError && (
-              <div className="p-4 bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 rounded-2xl text-red-650 flex items-start space-x-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span className="leading-relaxed whitespace-pre-line">{parsingError}</span>
               </div>
             )}
 
