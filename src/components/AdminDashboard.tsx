@@ -3,7 +3,7 @@ import { UserProfile, LaoLetterDocument } from "../types";
 import { db, handleFirestoreError, OperationType, auth, safeGetDoc, safeGetDocs, safeSetDoc, safeUpdateDoc, safeDeleteDoc } from "../firebase";
 import { collection, query, orderBy, doc, where, onSnapshot } from "firebase/firestore";
 import { sendPasswordResetEmail } from "firebase/auth";
-import { ShieldCheck, X, Users, User, RefreshCw, KeyRound, AlertCircle, FileText, Upload, ChevronDown, Database, HardDrive, Activity, UserCheck, TrendingUp, Coins, Eye, Download, ZoomIn, ZoomOut, RotateCw, Printer, FileSpreadsheet, Presentation } from "lucide-react";
+import { ShieldCheck, X, Users, User, RefreshCw, KeyRound, AlertCircle, FileText, Upload, ChevronDown, Database, HardDrive, Activity, UserCheck, TrendingUp, Coins, Eye, Download, ZoomIn, ZoomOut, RotateCw, Printer, FileSpreadsheet, Presentation, MessageCircle } from "lucide-react";
 import SupportChat from "./SupportChat";
 
 interface AdminDashboardProps {
@@ -1019,67 +1019,64 @@ ${docItem.originalText || ''}
               {message.type === 'success' && <ShieldCheck className="w-4 h-4" />}
               {message.text}
             </div>
-          )}          {/* Diagnostic overview statistic cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 animate-in fade-in duration-300">
+          )}
+          {/* Diagnostic overview statistic cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4 animate-in fade-in duration-300">
             {/* Total Users & Active status */}
-            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Registered Users</span>
-                <span className="text-2xl font-black text-slate-800 dark:text-white block">{stats.totalUsers}</span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 font-semibold">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-pulse"></span>
-                  {stats.activeUsersCount} Active ({stats.totalUsers > 0 ? (stats.activeUsersCount / stats.totalUsers * 100).toFixed(0) : 0}%)
+            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
+              <div className="space-y-0.5 sm:space-y-1">
+                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Members</span>
+                <span className="text-lg sm:text-2xl font-black text-slate-800 dark:text-white block leading-none">{stats.totalUsers}</span>
+                <span className="text-[8px] sm:text-[10px] text-slate-500 dark:text-slate-400 flex items-center gap-1 mt-1 font-semibold whitespace-nowrap">
+                  <span className="w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full bg-emerald-500 inline-block"></span>
+                  {stats.activeUsersCount} Active
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400 shrink-0">
-                <Users className="w-5 h-5" />
+              <div className="p-2 sm:p-3 rounded-xl bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400 shrink-0">
+                <Users className="w-4 sm:w-5 h-4 sm:h-5" />
               </div>
             </div>
 
             {/* Subscription Breakdown */}
-            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
-              <div className="space-y-1 w-full text-xs">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Membership Tiers</span>
-                <div className="flex flex-col gap-0.5 mt-1 text-[11px] text-slate-600 dark:text-slate-350">
+            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
+              <div className="space-y-1 w-full">
+                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Tiers</span>
+                <div className="flex flex-col gap-0.5 mt-0.5 text-[9px] sm:text-[11px] text-slate-600 dark:text-slate-350">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>Free</span>
-                    <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{stats.freeUsers}</span>
+                    <span className="flex items-center gap-1 font-medium"><span className="w-1 h-1 rounded-full bg-slate-400"></span>F</span>
+                    <span className="font-mono font-bold">{stats.freeUsers}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>Pro</span>
-                    <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">{stats.proUsers}</span>
+                    <span className="flex items-center gap-1 font-medium"><span className="w-1 h-1 rounded-full bg-indigo-500"></span>P</span>
+                    <span className="font-mono font-bold text-indigo-600">{stats.proUsers}</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 font-medium"><span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Ultra</span>
-                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{stats.ultraUsers}</span>
+                    <span className="flex items-center gap-1 font-medium"><span className="w-1 h-1 rounded-full bg-amber-500"></span>U</span>
+                    <span className="font-mono font-bold text-amber-600">{stats.ultraUsers}</span>
                   </div>
                 </div>
               </div>
-              <div className="p-3 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400 shrink-0 ml-3">
+              <div className="p-2 sm:p-3 rounded-xl bg-indigo-100 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-400 shrink-0 ml-2 hidden sm:block">
                 <Activity className="w-5 h-5" />
               </div>
             </div>
 
             {/* Income & Revenue Estimator */}
-            <div className="bg-emerald-500/5 dark:bg-emerald-550/10 border border-emerald-200/85 dark:border-emerald-500/20 p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
-              <div className="space-y-1 w-full">
-                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Estimated Income</span>
+            <div className="bg-emerald-500/5 dark:bg-emerald-550/10 border border-emerald-200/85 dark:border-emerald-500/20 p-3 sm:p-4.5 rounded-2xl flex items-center justify-between shadow-sm col-span-2 sm:col-span-1">
+              <div className="space-y-0.5 sm:space-y-1 w-full">
+                <span className="text-[8px] sm:text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider block">Est. Revenue</span>
                 
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-xl font-black text-slate-805 dark:text-white block flex items-baseline gap-1">
-                    ${incomeMRR.usd} <span className="text-[9px] font-bold text-slate-400 uppercase">MRR</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-lg sm:text-2xl font-black text-slate-800 dark:text-white block flex items-baseline gap-1">
+                    ${incomeMRR.usd} <span className="text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase leading-none">MRR</span>
                   </span>
-                  <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 block font-mono">
+                  <span className="text-[9px] sm:text-[11px] font-bold text-emerald-600 dark:text-emerald-400 block font-mono">
                     {incomeMRR.lak.toLocaleString()} LAK/mo
                   </span>
                 </div>
-                
-                <span className="text-[9px] text-slate-500 dark:text-slate-400 mt-1.5 block leading-tight font-semibold border-t border-emerald-100/60 dark:border-emerald-500/10 pt-1">
-                  Total Paid: <span className="font-bold text-slate-800 dark:text-white font-mono">${collectedRevenue.usd}</span> ({collectedRevenue.lak.toLocaleString()} LAK)
-                </span>
               </div>
-              <div className="p-3 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400 shrink-0">
-                <Coins className="w-5 h-5" />
+              <div className="p-2 sm:p-3 rounded-xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400 shrink-0">
+                <Coins className="w-4 sm:w-5 h-4 sm:h-5" />
               </div>
             </div>
 
@@ -1089,63 +1086,120 @@ ${docItem.originalText || ''}
                 setActiveTab('documents');
                 handleFetchAllDocuments();
               }}
-              className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-[0.98]"
+              className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4.5 rounded-2xl flex items-center justify-between shadow-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-[0.98]"
             >
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Total OCR Documents</span>
-                <span className="text-2xl font-black text-slate-800 dark:text-white block">{stats.totalDocuments}</span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-405 mt-1 block">
-                  Avg {(stats.totalUsers > 0 ? (stats.totalDocuments / stats.totalUsers).toFixed(1) : 0)} docs / user
+              <div className="space-y-0.5 sm:space-y-1">
+                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">OCR Docs</span>
+                <span className="text-lg sm:text-2xl font-black text-slate-800 dark:text-white block leading-none">{stats.totalDocuments}</span>
+                <span className="text-[8px] sm:text-[10px] text-slate-500 dark:text-slate-405 mt-1 block font-semibold leading-none">
+                  {(stats.totalUsers > 0 ? (stats.totalDocuments / stats.totalUsers).toFixed(1) : 0)}/u
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-tiffany-100 text-tiffany-600 dark:bg-tiffany-500/15 dark:text-tiffany-400 shrink-0">
-                <FileText className="w-5 h-5" />
+              <div className="p-2 sm:p-3 rounded-xl bg-tiffany-100 text-tiffany-600 dark:bg-tiffany-500/15 dark:text-tiffany-400 shrink-0">
+                <FileText className="w-4 sm:w-5 h-4 sm:h-5" />
               </div>
             </div>
 
             {/* Data Storage footprint */}
-            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
-              <div className="space-y-1">
-                <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Est. Database Storage</span>
-                <span className="text-2xl font-black text-slate-800 dark:text-white block">{formatBytes(stats.totalStorageBytes)}</span>
-                <span className="text-[10px] text-slate-500 dark:text-slate-405 mt-1 block">
-                  OCR characters UTF-16 size
-                </span>
+            <div className="bg-slate-550/5 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800 p-3 sm:p-4.5 rounded-2xl flex items-center justify-between shadow-sm">
+              <div className="space-y-0.5 sm:space-y-1">
+                <span className="text-[8px] sm:text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider block">Storage</span>
+                <span className="text-lg sm:text-2xl font-black text-slate-800 dark:text-white block leading-none">{formatBytes(stats.totalStorageBytes)}</span>
+                <span className="text-[8px] text-zinc-400 dark:text-slate-500 mt-1 block leading-none">UTF-16</span>
               </div>
-              <div className="p-3 rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400 shrink-0">
-                <HardDrive className="w-5 h-5" />
+              <div className="p-2 sm:p-3 rounded-xl bg-purple-100 text-purple-600 dark:bg-purple-500/15 dark:text-purple-400 shrink-0">
+                <HardDrive className="w-4 sm:w-5 h-4 sm:h-5" />
               </div>
             </div>
           </div>
           
-          <div className="flex space-x-4 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto">
-            <button onClick={() => setActiveTab('requests')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'requests' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Pending Payment Slips</button>
-            <button 
-              onClick={() => {
-                setActiveTab('documents');
-                handleFetchAllDocuments();
-              }} 
-              className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'documents' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Global Documents
-            </button>
-            <button onClick={() => setActiveTab('chat')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'chat' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'} flex items-center gap-1.5`}>
-              Customer Chat
-              {unreadChatCount > 0 && (
-                <span className="bg-red-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full animate-pulse shadow-sm">
-                  {unreadChatCount}
-                </span>
-              )}
-            </button>
-            <button onClick={() => setActiveTab('tracking')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'tracking' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>Sub Expirations Tracker</button>
-            <button onClick={() => setActiveTab('billing')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'billing' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-705'}`}>API Keys & Spend</button>
-            <button onClick={() => setActiveTab('users')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'users' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500 hover:text-slate-700'}`}>Registered Users</button>
-            <button onClick={() => setActiveTab('templates')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'templates' ? 'text-tiffany-600 border-b-2 border-tiffany-600 font-extrabold' : 'text-slate-500 hover:text-slate-700'}`}>Official Templates</button>
-            <button onClick={() => setActiveTab('aitypes')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'aitypes' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>AI Doc Types</button>
-            <button onClick={() => setActiveTab('bankqrs')} className={`text-sm font-bold whitespace-nowrap pb-1 cursor-pointer transition ${activeTab === 'bankqrs' ? 'text-tiffany-600 border-b-2 border-tiffany-600' : 'text-slate-500'}`}>Bank QRs</button>
-          </div>
+          <div className="flex flex-col md:flex-row gap-6 mt-4">
+            {/* Sidebar Rail Navigation - Vertical line on mobile */}
+            <div className="flex flex-row md:flex-col gap-1 overflow-x-auto md:w-52 shrink-0 no-scrollbar md:pr-4 md:border-r border-slate-200 dark:border-slate-800 pb-2 md:pb-0">
+              <button 
+                onClick={() => setActiveTab('requests')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'requests' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <Coins className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Payments</span>
+                <span className="md:hidden">Bills</span>
+              </button>
 
-          {activeTab === 'documents' ? (
+              <button 
+                onClick={() => {
+                  setActiveTab('documents');
+                  handleFetchAllDocuments();
+                }} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'documents' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <Database className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Global Docs</span>
+                <span className="md:hidden">Archive</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('chat')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 relative ${activeTab === 'chat' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <MessageCircle className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Customer Chat</span>
+                <span className="md:hidden">Inbox</span>
+                {unreadChatCount > 0 && (
+                  <span className="absolute top-2 right-2 bg-red-500 text-white text-[8px] font-black w-4 h-4 flex items-center justify-center rounded-full border-2 border-white dark:border-slate-900 animate-pulse">
+                    {unreadChatCount}
+                  </span>
+                )}
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('tracking')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'tracking' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <TrendingUp className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Expirations</span>
+                <span className="md:hidden">Expiry</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('billing')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'billing' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <Database className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">API Spend</span>
+                <span className="md:hidden">Billing</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('users')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'users' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <Users className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Users</span>
+                <span className="md:hidden">Members</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('templates')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'templates' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <FileText className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Templates</span>
+                <span className="md:hidden">Forms</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab('bankqrs')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'bankqrs' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <Upload className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Bank QR</span>
+                <span className="md:hidden">QR</span>
+              </button>
+            </div>
+
+            {/* Tab content wrapper */}
+            <div className="flex-1 min-w-0">
+              {activeTab === 'documents' ? (
             <div className="bg-white dark:bg-slate-900 w-full rounded-2xl shadow-sm overflow-hidden flex flex-col h-[600px] border border-slate-100 dark:border-slate-800 animate-in fade-in slide-in-from-bottom-2">
               <div className="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/40">
                 <div>
@@ -2106,6 +2160,8 @@ ${docItem.originalText || ''}
             </div>
           </div>
           )}
+            </div>
+          </div>
         </div>
       </div>
       {renderUserFilesViewer()}
