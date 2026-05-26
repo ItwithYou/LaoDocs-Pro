@@ -67,9 +67,9 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
           <div>
             <h1 className="font-sans font-bold text-base sm:text-lg tracking-tight flex items-center space-x-2">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate hidden sm:inline-block">LaoDocs Pro</span>
-              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate sm:hidden">LaoDocs</span>
-              <span className="hidden sm:inline-block text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded font-medium">
-                {isLao ? 'ໝວດເອກະສານ' : 'Document Pro'}
+              <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate sm:hidden">LaoDocs Pro</span>
+              <span className="text-[9px] sm:text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1 sm:px-1.5 py-0.5 rounded font-medium shrink-0">
+                {userProfile ? (userProfile.subscriptionTier === 'ultra' ? 'Ultra' : userProfile.subscriptionTier === 'pro' ? 'Pro' : 'Free') : 'Free'}
               </span>
             </h1>
             <p className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-wide leading-none truncate">{isLao ? 'ລະບົບຄຸ້ມຄອງເອກະສານທາງການ' : 'Formal Document Manager'}</p>

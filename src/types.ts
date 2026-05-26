@@ -12,6 +12,7 @@ export interface UserProfile {
   profilePhoto?: string;
   subscriptionTier: "free" | "pro" | "ultra";
   subscriptionEnd?: string;
+  cancelAtPeriodEnd?: boolean;
   role?: "user" | "admin";
   createdAt: any; // Firestore Timestamp
 }

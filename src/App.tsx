@@ -357,6 +357,10 @@ export default function App() {
           onClose={() => setIsProfileModalOpen(false)} 
           onUpdate={setUserProfile} 
           onLoginClick={handleGoogleLoginDirect}
+          onUpgradeClick={() => {
+            setIsProfileModalOpen(false);
+            setIsSubscriptionModalOpen(true);
+          }}
         />
       )}
     </div>
