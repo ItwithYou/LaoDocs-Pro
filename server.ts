@@ -1,8 +1,18 @@
-import { GoogleGenAI, Type } from "@google/genai";
 import express from "express";
 import path from "path";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
+import HTMLtoDOCX from "html-to-docx";
+import JSZip from "jszip";
+import { extractTextFromWordBase64 } from "./server/utils/documentParser";
+
+import { draftDocument } from "./server/tools/04-draft-document";
+import { convertRawText } from "./server/tools/05-convert-raw-text";
+import { retypeDocument } from "./server/tools/01-retype";
+import { formatOriginal } from "./server/tools/02-format-original";
+import { processRecommended } from "./server/tools/03-recommended-ai";
+import { addRuntimeApiKey, getCandidateApiKeys } from "./server/utils/geminiClient";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
@@ -13,269 +23,379 @@ const PORT = 3000;
 app.use(express.json({ limit: "150mb" }));
 app.use(express.urlencoded({ limit: "150mb", extended: true }));
 
-// Initialize Gemini API
-const KEY_CANDIDATES = [
-  "AIzaSyBADYe8iGYEtQDCxPo5m5BzPA2RTbkDjiI", // The user's newest key (active/renewed)
-  "AIzaSyBJhjBi8_0-1VzSwXoQOQY6cgv87QuwW94"  // The verified working key
-];
-
-function getCandidateApiKeys(): string[] {
-  const keys: string[] = [];
-  
-  // 1. Check if an environment variable exists, add it to the front
-  if (process.env.GEMINI_API_KEY) {
-    keys.push(process.env.GEMINI_API_KEY.trim());
+app.post("/api/admin/set-api-key", (req, res) => {
+  const { apiKey, toolAction } = req.body;
+  if (!apiKey) {
+    return res.status(400).json({ error: "API key is required" });
   }
-  
-  // 2. Add known candidates
-  for (const candidate of KEY_CANDIDATES) {
-    if (!keys.includes(candidate)) {
-      keys.push(candidate);
-    }
-  }
-  
-  return keys.filter(k => k && k.length > 5);
-}
+  addRuntimeApiKey(apiKey, toolAction);
+  res.json({ success: true, message: "API key added to runtime successfully" });
+});
 
-
-// AI Document Parser & Font Converter endpoint
-import mammoth from "mammoth";
-
-app.post("/api/gemini/convert", async (req, res) => {
+app.get("/api/admin/get-api-keys", async (req, res) => {
   try {
-    const { fileBase64, mimeType, promptType, rawLaoText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType } = req.body;
-
-    let envKeyForLog = process.env.GEMINI_API_KEY;
-    if (envKeyForLog && (envKeyForLog.includes("BADYe8") || envKeyForLog.startsWith("AIzaSyBADYe"))) {
-      console.log("Stale/expired key detected, applying working fallback key.");
-    }
-
-    let contents: any[] = [];
-    let promptString = "";
-    
-    let extractedReferenceText = "";
-    if (referenceFormatFileBase64 && referenceFormatFileMimeType && promptType === "generate") {
-      if (referenceFormatFileMimeType.includes("wordprocessingml.document")) {
-        const refBuffer = Buffer.from(referenceFormatFileBase64, "base64");
-        const { value: refText } = await mammoth.extractRawText({ buffer: refBuffer });
-        extractedReferenceText = refText || "";
-      } else {
-        contents.push({
-          inlineData: {
-            mimeType: referenceFormatFileMimeType,
-            data: referenceFormatFileBase64,
-          }
-        });
-      }
-    }
-
-    // Convert Word documents to raw text before processing
-    let processedRawText = rawLaoText || "";
-    let isWordDoc = false;
-    if (fileBase64 && mimeType && mimeType.includes("wordprocessingml.document")) {
-      isWordDoc = true;
-      const buffer = Buffer.from(fileBase64, "base64");
-      const { value: wordText } = await mammoth.extractRawText({ buffer });
-      processedRawText = wordText || " ";
-    }
-
-    const formatInstruction = `
-IMPORT FONT MAPPING RULES (CRITICAL):
-For the converted formatted content (HTML formatted), you MUST ALWAYS separate Lao characters from Latin letters and numbers to apply beautiful typographic fonts (Phetsarath OT for Lao, Times New Roman for Latin):
-1. Every Lao letter, Lao word, or Lao phrase MUST be wrapped in an HTML span tag with the class "font-lao":
-   e.g., <span class="font-lao">ສະບາຍດີ</span>, <span class="font-lao">ສາທາລະນະລັດ...</span>
-2. Every Latin letter (English word / name), Number (digits 0-9), punctuation (/, -, (, ), &), or code reference MUST be wrapped in an HTML span tag with the class "font-roman":
-   e.g., <span class="font-roman">No. 129/PM</span>, <span class="font-roman">2026-05-25</span>, <span class="font-roman">Ministry</span>.
-3. CRITICAL: Clean all double spaces and remove unnecessary spaces between words, especially in Lao text (as Lao generally does not use spaces between words). Ensure there are no double spaces.
-4. Correct and fix any Error Fonts, weird font artifacts, legacy encoded text, and typos. Fix font errors so everything is clean Unicode Lao.`;
-
-    const templateInstruction = `
-5. Structure the output as an elegant, clean Lao Government formal letter template containing:
-   - Motto header: centered "ສາທາລະນະລັດ ປະຊາທິປະໄຕ ປະຊາຊົນລາວ" (font-lao) and "ສັນຕິພາບ ເອກະລາດ ປະຊາທິປະໄຕ ເອກະພາບ ວັດທະນາຖາວອນ" (font-lao)
-   - Left side: Issuer organization / Department
-   - Right side: Reference ID (ເລກທີ...) and Date (ວັນທີ...)
-   - Standard Subject ("ເລື່ອງ: ...") and Attention ("ຮຽນ: ...")
-   - Spaced paragraphs, clean alignments
-   - Representative signatory block at the bottom right.`;
-
-    if (promptType === "generate") {
-      promptString = `
-You are an expert Lao government administrative assistant.
-The admin has defined the following standard structural template / rules for this type of document:
-"""
-${documentContext || "Standard official Lao documentation template."}
-"""
-
-${extractedReferenceText ? `The admin ALSO uploaded a reference layout document for you to strictly mimic. The extracted text flow is: \n"""\n${extractedReferenceText}\n"""\nFollow this reference structure exactly.` : ""}
-
-The user has provided the following rough draft or request:
-"""
-${processedRawText}
-"""
-
-Write a completely polished, formal Lao government letter/document satisfying the user's request while strictly following the admin's structural rules above.
-Expand on details formally if the user's draft is too brief.
-${formatInstruction}
-${templateInstruction}
-`;
-      contents.push({ text: promptString });
-    } else if (promptType === "font-convert" || isWordDoc) {
-      promptString = `
-You are given a raw piece of text written in Lao.
-Perform the following:
-1. Parse and correct any spelling/typo errors.
-2. If it contains old Lao font spellings or transcriptions (such as Saysettha, Sanyasit), convert them to modern unicode Lao text (Phetsarath OT / standard Lao).
-3. Do NOT add any extra information, headers, or structural content that is not present in the source text. Your job is ONLY to convert and format the exact text provided securely.
-4. Output the raw plain text. DO NOT use any HTML tags like <span class="font-roman">, just output exactly the converted text.
-
-Text to convert:
-"""
-${processedRawText}
-"""
-`;
-      contents.push({ text: promptString });
-    } else {
-      if (!fileBase64 || !mimeType) {
-        return res.status(400).json({ error: "Missing file base64 data or mimeType" });
-      }
-
-      const isPdf = mimeType.toLowerCase().includes("pdf");
-      const documentPart = {
-        inlineData: {
-          mimeType: mimeType,
-          data: fileBase64,
-        },
-      };
-
-      let promptString = "";
-      
-      if (promptType === "retype") {
-        promptString = `
-You are given an uploaded ${isPdf ? "PDF" : "Image"} document.
-Your task is to transcribe/retype the entire document text verbatim.
-CRITICAL DIRECTIONS:
-1. Do NOT translate. If the photo or document is in English, type it all in English. If it is in Chinese, type it all in Chinese. If it is in Lao, type it all in Lao.
-2. Type ALL content. Do not paraphrase, shorten, or omit any sentences or paragraphs.
-3. Save the SAME layout and format with the original document (including line breaks, paragraphs, lists, aligned sections, and header titles).
-4. For beautiful typography, wrap characters in appropriate span tags:
-   - Wrap Lao characters in <span class="font-lao">Lao text here</span>
-   - Wrap English/Latin characters, numbers, Chinese, or other languages/symbols in <span class="font-roman">text here</span>
-`;
-      } else if (promptType === "format-original") {
-        promptString = `
-You are given an uploaded ${isPdf ? "PDF" : "Image"} document.
-Your task is to transcribe and format the document in its ORIGINAL language.
-CRITICAL DIRECTIONS:
-1. Do NOT translate from its source language (English, Chinese, Lao, etc.) into Lao. Keep the text verbatim in its original language.
-2. Apply our standard beautiful formal administrative document formatting (headers, alignments, spacing, paragraphs, table structures, and signatory blocks) while fully retaining the original language of the text.
-3. For beautiful typography, wrap characters in appropriate span tags:
-   - Wrap Lao characters in <span class="font-lao">Lao text here</span>
-   - Wrap English/Latin characters, numbers, Chinese, or other languages/symbols in <span class="font-roman">text here</span>
-`;
-      } else {
-        promptString = `
-You are given an uploaded ${isPdf ? "PDF" : "Image"} document containing a Lao formal letter or business log.
-Perform OCR, correct any transcription errors, convert any legacy Lao fonts (typewriter or legacy ASCII representations) to modern unicode Lao language, and align the output with standard Lao government administration patterns.
-${formatInstruction}
-${templateInstruction}
-`;
-      }
-      contents.push(documentPart);
-      contents.push({ text: promptString });
-    }
-
-    // Call Gemini 3.5 Flash with fallback candidates loop
     const keys = getCandidateApiKeys();
-    let response = null;
-    let lastError = null;
+    const result: any[] = [];
 
-    for (let i = 0; i < keys.length; i++) {
-      const activeKey = keys[i];
+    for (const k of keys) {
+      if (!k) continue;
+      const masked = k.substring(0, 7) + "..." + k.substring(k.length - 4);
+      let status = "Checking...";
+      let errorMessage = "";
+
       try {
-        console.log(`[Gemini Request] Trying API key candidate ${i + 1}/${keys.length} (Starts with: ${activeKey.substring(0, 10)}...)`);
-        const ai = new GoogleGenAI({
-          apiKey: activeKey,
-          httpOptions: {
-            headers: {
-              "User-Agent": "aistudio-build",
-            },
-          },
+        const ai = new GoogleGenAI({ apiKey: k });
+        // Use a ultra simple, cheapest model test to see if API responds correctly
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: "Hello",
         });
-
-        response = await ai.models.generateContent({
-          model: "gemini-3.5-flash",
-          contents: contents,
-          config: {
-            systemInstruction: "You are an expert Lao government administrative assistant and structural document translation machine. You read documents (images, PDFs, or raw text), normalize fonts into modern Unicode Lao (Phetsarath) and Latin numbers/letters (Times New Roman), and structure letters in formal administrative templates.",
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                title: { type: Type.STRING, description: "Extract the exact Subject or Title of the document" },
-                sender: { type: Type.STRING, description: "Extract the administrative department or company sending this letter" },
-                receiver: { type: Type.STRING, description: "Extract the target recipient organization or person" },
-                originalText: { type: Type.STRING, description: "Full transcript of the parsed text prior to formatting" },
-                convertedText: { type: Type.STRING, description: "Fully formatted formal governmental HTML body string using nested font-lao and font-roman spans." },
-                flowStatus: { type: Type.STRING, description: "Automatic tracking status recommendation, e.g. Draft, Received, Processing, Filed" },
-                summary: { type: Type.STRING, description: "A summary of the letters intent and core contents (1-2 sentences)" },
-                referenceNo: { type: Type.STRING, description: "Administrative letter number, e.g., '145/ກປ'" },
-                referenceDate: { type: Type.STRING, description: "Date of the formal letter, converted to standard format if possible" }
-              },
-              required: ["title", "sender", "receiver", "originalText", "convertedText", "flowStatus", "summary"]
-            }
-          }
-        });
-
-        if (response) {
-          console.log(`[Gemini Request] Successfully completed with key candidate ${i + 1}!`);
-          break;
+        if (response && response.text) {
+          status = "Active & Working";
+        } else {
+          status = "No Response";
         }
       } catch (err: any) {
-        lastError = err;
-        const errMsg = (err.message || "").toLowerCase();
-        console.error(`[Gemini Request] Failed with key candidate ${i + 1}:`, errMsg);
-        
-        // If the error looks like it's an API Key or Auth issue, continue to the next candidate
-        if (
-          errMsg.includes("api key") || 
-          errMsg.includes("expired") || 
-          errMsg.includes("invalid") || 
-          errMsg.includes("unauthorized") || 
-          errMsg.includes("400") || 
-          errMsg.includes("403")
-        ) {
-          console.warn("Retrying with next key candidate...");
-          continue;
-        } else {
-          // If it's a model issue or other fatal error, raise it immediately
-          throw err;
-        }
+        status = "Invalid / Expired";
+        errorMessage = err.message || String(err);
       }
+
+      result.push({
+        masked,
+        status,
+        errorMessage,
+        isDefault: k === "AIzaSyA5K4OEqBEsCrQPBzLadiRg-BN6YZXzGO4",
+        isEnv: k === process.env.GEMINI_API_KEY
+      });
     }
 
-    if (!response) {
-      throw lastError || new Error("All API key candidates failed to process Gemini request.");
+    res.json({ keys: result });
+  } catch (error: any) {
+    res.status(500).json({ error: "Failed to load keys", message: error.message });
+  }
+});
+
+// AI Document Parser & Font Converter endpoint
+app.post("/api/gemini/convert", async (req, res) => {
+  try {
+    const { 
+        fileBase64, 
+        mimeType, 
+        promptType, 
+        rawLaoText, 
+        documentContext, 
+        referenceFormatFileBase64, 
+        referenceFormatFileMimeType,
+        targetLanguage
+    } = req.body;
+
+    let isWordDoc = false;
+    let processedRawText = rawLaoText || "";
+
+    if (fileBase64 && mimeType && mimeType.includes("wordprocessingml.document")) {
+      isWordDoc = true;
+      processedRawText = await extractTextFromWordBase64(fileBase64);
     }
 
-    const responseText = response.text;
-    if (!responseText) {
-      throw new Error("No response text received from Gemini.");
+    let result;
+
+    if (promptType === "generate") {
+        result = await draftDocument(processedRawText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType, targetLanguage);
+    } 
+    else if (promptType === "font-convert" || isWordDoc) {
+        result = await convertRawText(processedRawText);
+    } 
+    else if (promptType === "retype") {
+        result = await retypeDocument(fileBase64, mimeType);
+    } 
+    else if (promptType === "format-original") {
+        result = await formatOriginal(fileBase64, mimeType);
+    } 
+    else {
+        result = await processRecommended(fileBase64, mimeType, targetLanguage);
     }
 
-    let cleanText = responseText.trim();
-    if (cleanText.startsWith("```json")) {
-      cleanText = cleanText.replace(/^```json\n?/, "").replace(/```\n?$/, "").trim();
-    } else if (cleanText.startsWith("```")) {
-      cleanText = cleanText.replace(/^```\n?/, "").replace(/```\n?$/, "").trim();
-    }
-    const resultData = JSON.parse(cleanText);
-    return res.json(resultData);
+    return res.json(result);
 
   } catch (error: any) {
     console.error("Gemini Converter Endpoint Error:", error);
     return res.status(500).json({
       error: error.message || "Failed to process document. Please check your inputs and try again."
     });
+  }
+});
+
+app.post("/api/export/docx", async (req, res) => {
+  const { htmlContent } = req.body;
+  try {
+    let cleanedHtml = htmlContent || "";
+    if (!cleanedHtml) {
+      return res.status(400).json({ error: "Missing HTML content" });
+    }
+
+    // Strip out interactive/script/style/vector/button elements completely to prevent html-to-docx parser crashes
+    cleanedHtml = cleanedHtml.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+    cleanedHtml = cleanedHtml.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
+    cleanedHtml = cleanedHtml.replace(/<svg\b[^<]*(?:(?!<\/svg>)<[^<]*)*<\/svg>/gi, "");
+    cleanedHtml = cleanedHtml.replace(/<button\b[^<]*(?:(?!<\/button>)<[^<]*)*<\/button>/gi, "");
+
+    // Clean up double-spacing and standard typography layout anomalies
+    cleanedHtml = cleanedHtml.replace(/[ \t]{2,}/g, ' ');
+
+    // Convert legacy <center> tags to paragraphs with direct text alignment styles for compatibility
+    cleanedHtml = cleanedHtml.replace(/<center>/gi, '<p style="text-align: center;">');
+    cleanedHtml = cleanedHtml.replace(/<\/center>/gi, '</p>');
+
+    // Convert only leaf-level <div> tags (divs with no nested tables, divs, or paragraphs) to <p> tags.
+    // This allows alignment styles on leaf content to render correctly in Word while preserving container layouts.
+    let previousHtml;
+    do {
+      previousHtml = cleanedHtml;
+      cleanedHtml = cleanedHtml.replace(/<div\b([^>]*)>([^<]*(?:<(?!div|table|p|tr|td)[^>]*>[^<]*)*)<\/div>/gi, '<p$1>$2</p>');
+    } while (cleanedHtml !== previousHtml);
+
+    // Standardize all element structures, merging classes/alignments to a single 'style' attribute and removing duplicates
+    let currentTableHasBorder = false;
+    cleanedHtml = cleanedHtml.replace(/<([a-z1-6]+)\b([^>]*)>/gi, (match, tagName, attrs) => {
+      const lowerTag = tagName.toLowerCase();
+      
+      // Extract class, style, align attributes
+      let classMatch = attrs.match(/class=["']([^"']*)["']/i);
+      let styleMatch = attrs.match(/style=["']([^"']*)["']/i);
+      let alignMatch = attrs.match(/align=["']([^"']*)["']/i);
+
+      let classes = classMatch ? classMatch[1] : "";
+      let styles = styleMatch ? styleMatch[1].trim() : "";
+      if (styles && !styles.endsWith(";")) styles += ";";
+      
+      let align = alignMatch ? alignMatch[1] : "";
+
+      // Determine text alignments from classes and align attribute
+      let alignment = "";
+      if (classes.includes("text-center") || align === "center" || classes.includes("center")) {
+        alignment = "center";
+      } else if (classes.includes("text-right") || align === "right" || classes.includes("right")) {
+        alignment = "right";
+      } else if (classes.includes("text-justify") || align === "justify" || classes.includes("justify")) {
+        alignment = "justify";
+      } else if (classes.includes("text-left") || align === "left" || classes.includes("left")) {
+        alignment = "left";
+      }
+
+      if (alignment && !styles.includes("text-align")) {
+        styles += ` text-align: ${alignment};`;
+      }
+
+      // Handle font weights
+      if ((classes.includes("font-bold") || classes.includes("font-semibold")) && !styles.includes("font-weight")) {
+        styles += " font-weight: bold;";
+      }
+
+      // Handle table styling
+      if (lowerTag === "table") {
+        if (!styles.includes("width")) {
+          styles += " width: 100%;";
+        }
+        if (!styles.includes("border-collapse")) {
+          styles += " border-collapse: collapse;";
+        }
+        
+        const hasBorderAttr = attrs.match(/border=["']([^"']*)["']/i);
+        const borderVal = hasBorderAttr ? hasBorderAttr[1] : null;
+        const hasBorderClass = classes.includes("border");
+        
+        // If inline style has 'border: none' or 'border: 0' explicitly:
+        const normalizedStylesForCheck = styles.replace(/\s/g, "").toLowerCase();
+        const hasInlineNoBorder = normalizedStylesForCheck.includes("border:none") || normalizedStylesForCheck.includes("border:0") || normalizedStylesForCheck.includes("border:0px") || normalizedStylesForCheck.includes("border-left:none") || normalizedStylesForCheck.includes("border-top:none");
+        const hasInlineBorder = styles.includes("border:") && !hasInlineNoBorder;
+
+        if (hasInlineNoBorder) {
+          currentTableHasBorder = false;
+          // Strip existing borders and write direct border: none;
+          styles = styles.replace(/border\s*:\s*[^;]+/gi, "").trim();
+          styles += " border: none;";
+        } else if (hasInlineBorder || (borderVal !== null && borderVal !== "0") || hasBorderClass) {
+          currentTableHasBorder = true;
+          if (!styles.includes("border")) {
+            styles += " border: 0.5pt solid #000000;";
+          }
+        } else {
+          // If no explicit style, default to border: none for professional layout headers
+          currentTableHasBorder = false;
+          styles += " border: none;";
+        }
+      }
+
+      // Handle table cells styling
+      let cellWidth = "";
+      if (lowerTag === "td" || lowerTag === "th") {
+        if (!styles.includes("padding")) {
+          styles += " padding: 6px 8px;";
+        }
+        if (!styles.includes("vertical-align")) {
+          styles += " vertical-align: top;";
+        }
+        
+        // Fix html-to-docx bug with style="width: 50%" crashing invalid XML name @w
+        const widthMatch = styles.match(/width\s*:\s*([^;]+)/i);
+        if (widthMatch) {
+          cellWidth = widthMatch[1].trim();
+          styles = styles.replace(/width\s*:\s*[^;]+;?/gi, "").trim();
+        }
+
+        const normalizedStylesForCheck = styles.replace(/\s/g, "").toLowerCase();
+        const hasInlineNoBorder = normalizedStylesForCheck.includes("border:none") || normalizedStylesForCheck.includes("border:0") || normalizedStylesForCheck.includes("border:0px") || normalizedStylesForCheck.includes("border-left:none") || normalizedStylesForCheck.includes("border-top:none");
+        const hasInlineBorder = styles.includes("border:") && !hasInlineNoBorder;
+
+        if (hasInlineNoBorder) {
+          styles = styles.replace(/border\s*:\s*[^;]+/gi, "").trim();
+          styles += " border: none;";
+        } else if (hasInlineBorder || currentTableHasBorder) {
+          if (!styles.includes("border")) {
+            styles += " border: 0.5pt solid #000000;";
+          }
+        } else {
+          // Default cell style is border: none unless table has border
+          styles += " border: none;";
+        }
+      }
+
+      // Standard paragraphs
+      if (lowerTag === "p" || lowerTag === "div") {
+        if (!styles.includes("line-height")) {
+          styles += " line-height: 1.0;";
+        }
+        if (!styles.includes("margin")) {
+          styles += " margin-top: 0in; margin-bottom: 0in;";
+        }
+      }
+
+      // Add default font to body/div/p if not already there to ensure perfect dual font rendering
+      if (lowerTag === "body" || lowerTag === "p" || lowerTag === "td" || lowerTag === "th" || lowerTag === "div") {
+        if (!styles.includes("font-family")) {
+          styles += " font-family: 'Times New Roman', 'Phetsarath OT', 'Phetsarath', serif;";
+        }
+        if (!styles.includes("font-size")) {
+          styles += " font-size: 12pt;";
+        }
+        if (!styles.includes("color")) {
+          styles += " color: #000000;";
+        }
+      }
+
+      // Build clean attributes by filtering out class/align/style/border attributes
+      let cleanAttrs = attrs
+        .replace(/class=["']([^"']*)["']/gi, "")
+        .replace(/style=["']([^"']*)["']/gi, "")
+        .replace(/align=["']([^"']*)["']/gi, "")
+        .replace(/border=["']([^"']*)["']/gi, "")
+        .replace(/[ \t]{2,}/g, ' ')
+        .trim();
+
+      if (styles) {
+        cleanAttrs = `style="${styles.replace(/\s+/g, " ").trim()}" ${cleanAttrs}`.trim();
+      }
+
+      if ((lowerTag === "td" || lowerTag === "th") && cellWidth) {
+        cleanAttrs = `width="${cellWidth}" ${cleanAttrs}`.trim();
+      }
+
+      return `<${tagName} ${cleanAttrs}>`.replace(/\s+>/, ">");
+    });
+
+    const wrappedHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body {
+      font-family: "Phetsarath OT", "Times New Roman", serif;
+      font-size: 12pt;
+      line-height: 1.0;
+      color: #000000;
+    }
+    p {
+      margin-top: 0pt;
+      margin-bottom: 0pt;
+      line-height: 1.0;
+      text-align: justify;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8pt;
+      margin-bottom: 8pt;
+    }
+    td, th {
+      padding: 6px 8px;
+      vertical-align: top;
+    }
+    .text-center, .center { text-align: center; }
+    .text-right, .right { text-align: right; }
+    .text-left, .left { text-align: left; }
+    .text-justify { text-align: justify; }
+    .font-bold, .font-semibold { font-weight: bold; }
+  </style>
+</head>
+<body spellcheck="false">
+  ${cleanedHtml}
+</body>
+</html>`;
+
+    let fileBuffer;
+    try {
+      fileBuffer = await HTMLtoDOCX(wrappedHtml, null, {
+        margins: {
+          top: 1134, // 2cm
+          bottom: 1134, // 2cm
+          left: 1701, // 3cm
+          right: 1134, // 2cm
+          header: 720,
+          footer: 720,
+          gutter: 0
+        },
+         font: "Phetsarath OT",
+        table: {
+          row: { cantSplit: true }
+        }
+      });
+    } catch (primaryErr) {
+      console.warn("Primary DOCX generation failed, retrying with raw stripped style...", primaryErr);
+      const ultraCleanHtml = wrappedHtml.replace(/style=["']([^"']*)["']/gi, "");
+      fileBuffer = await HTMLtoDOCX(ultraCleanHtml, null, {
+        margins: {
+          top: 1134,
+          bottom: 1134,
+          left: 1701,
+          right: 1134,
+          header: 720,
+          footer: 720,
+          gutter: 0
+        },
+        font: "Times New Roman"
+      });
+    }
+
+    const zip = await JSZip.loadAsync(fileBuffer);
+
+    const applyDualFonts = async (filePath) => {
+      if (zip.file(filePath)) {
+        let xml = await zip.file(filePath).async("string");
+        // Force ASCII, HAnsi, Complex Script, and EastAsia font mappings to map explicitly to dual fonts
+        // Clean out any conflicting theme fonts that trigger default Calibri rendering in Word
+        xml = xml.replace(/<w:rFonts\b[^>]*?\/?>/g, '<w:rFonts w:ascii="Phetsarath OT" w:hAnsi="Phetsarath OT" w:cs="Phetsarath OT" w:eastAsia="Phetsarath OT" w:hint="default" />');
+        zip.file(filePath, xml);
+      }
+    };
+
+    await applyDualFonts("word/styles.xml");
+    await applyDualFonts("word/document.xml");
+
+    const modifiedBuffer = await zip.generateAsync({ type: "nodebuffer" });
+    const buffer = Buffer.from(modifiedBuffer);
+    res.json({ docxBase64: buffer.toString("base64") });
+  } catch (err: any) {
+    console.error("Error generating DOCX:", err);
+    res.status(500).json({ error: "Failed to generate native DOCX document.", message: err.message });
   }
 });
 

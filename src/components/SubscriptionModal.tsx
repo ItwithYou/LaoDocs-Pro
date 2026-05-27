@@ -1,4 +1,4 @@
-import { SUBSCRIPTION_PLANS, SubscriptionPlan, UserProfile, PaymentSettings } from "../types";
+import { SUBSCRIPTION_PLANS, SUBSCRIPTION_DURATIONS, SubscriptionPlan, UserProfile, PaymentSettings } from "../types";
 import { db, handleFirestoreError, OperationType, safeGetDoc, safeGetDocs, safeSetDoc, safeUpdateDoc } from "../firebase";
 import { doc, serverTimestamp, query, collection, where } from "firebase/firestore";
 import { useState, useEffect } from "react";
@@ -14,6 +14,7 @@ interface SubscriptionModalProps {
 export default function SubscriptionModal({ userProfile, onClose, onUpdateProfile }: SubscriptionModalProps) {
   const { isLao } = useLanguage();
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan | null>(null);
+  const [selectedDuration, setSelectedDuration] = useState(SUBSCRIPTION_DURATIONS[0]);
   const [paymentCurrency, setPaymentCurrency] = useState<"LAK" | "USD">("LAK");
   const [isProcessing, setIsProcessing] = useState(false);
   const [cardNo, setCardNo] = useState("");
@@ -61,6 +62,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
         email: userProfile.email,
         displayName: userProfile.displayName || "",
         requestedTier: planId,
+        requestedDuration: selectedDuration.id,
         slipBase64: slipBase64,
         status: "pending",
         createdAt: serverTimestamp(),
@@ -224,7 +226,7 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                 </div>
                 <div className="text-right">
                   <p className="text-base font-black text-slate-900 dark:text-white">
-                    {paymentCurrency === "LAK" ? `${selectedPlan.priceLAK.toLocaleString()} LAK` : `$${selectedPlan.priceUSD}`}
+                    {paymentCurrency === "LAK" ? `${(selectedPlan.priceLAK * selectedDuration.factor).toLocaleString()} LAK` : `$${(selectedPlan.priceUSD * selectedDuration.factor).toFixed(2)}`}
                   </p>
                   <p className="text-[9px] text-slate-400 font-mono">
                     /{isLao ? selectedPlan.periodLao : selectedPlan.period}
@@ -258,6 +260,19 @@ export default function SubscriptionModal({ userProfile, onClose, onUpdateProfil
                   <span className="text-sm">🇺🇸</span>
                   <span>{isLao ? "ບັດໂດລາ USD (Card)" : "US Dollar USD (Card)"}</span>
                 </button>
+              </div>
+              
+              {/* DURATION SELECTOR */}
+              <div className="grid grid-cols-4 gap-2 mb-5">
+                {SUBSCRIPTION_DURATIONS.map(d => (
+                  <button
+                    key={d.id}
+                    onClick={() => setSelectedDuration(d)}
+                    className={`py-2 px-1 rounded-xl text-[10px] font-bold border transition ${selectedDuration.id === d.id ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400'}`}
+                  >
+                    {isLao ? d.labelLao : d.label}
+                  </button>
+                ))}
               </div>
 
               {/* CONDITION 1: LAK QR CODE PAYMENT (BCEL One) */}

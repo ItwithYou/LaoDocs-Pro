@@ -29,7 +29,7 @@ export default function App() {
 
   const [theme, setTheme] = useState<'light' | 'dark' | 'soft-blue' | 'warm-clay' | 'fresh-mint'>(() => {
     const saved = localStorage.getItem("lao-docs-theme");
-    return (saved === "dark" || saved === "soft-blue" || saved === "warm-clay" || saved === "fresh-mint") ? (saved as any) : "light";
+    return (saved === "dark" || saved === "soft-blue" || saved === "warm-clay" || saved === "fresh-mint" || saved === "light") ? (saved as any) : "warm-clay";
   });
   const [isLao, setIsLao] = useState(true);
   const [isOfflineDevice, setIsOfflineDevice] = useState(getOfflineMode());
@@ -85,6 +85,50 @@ export default function App() {
 
     return () => unsubscribe();
   }, []);
+
+  // Heartbeat to keep user isOnline as true and update lastActiveAt
+  useEffect(() => {
+    if (!currentUser) return;
+
+    let destroyed = false;
+
+    const updateStatus = async (status: boolean) => {
+      if (destroyed) return;
+      try {
+        const { doc } = await import("firebase/firestore");
+        const { safeUpdateDoc } = await import("./firebase");
+        const userRef = doc(db, "users", currentUser.uid);
+        await safeUpdateDoc(userRef, {
+          isOnline: status,
+          lastActiveAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn("Offline status synchronization failed:", err);
+      }
+    };
+
+    // Trigger immediate active state
+    updateStatus(true);
+
+    // Heartbeat every 20 seconds to maintain online designation
+    const interval = setInterval(() => {
+      updateStatus(true);
+    }, 20000);
+
+    const handleUnloadStatus = () => {
+      // Best effort offline signal on page closed
+      updateStatus(false);
+    };
+
+    window.addEventListener("beforeunload", handleUnloadStatus);
+
+    return () => {
+      destroyed = true;
+      clearInterval(interval);
+      window.removeEventListener("beforeunload", handleUnloadStatus);
+      updateStatus(false);
+    };
+  }, [currentUser]);
 
   // Fetch or construct profile document in Firestore
   const handleUserProfileSync = async (user: any) => {
@@ -316,8 +360,8 @@ export default function App() {
               <span className="inline-flex w-1.5 h-1.5 rounded-full bg-teal-500 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite] shrink-0" />
               <span className="text-[11px] sm:text-xs font-medium text-slate-600 dark:text-slate-300 whitespace-nowrap">
                 {isLao ? 
-                  "LaoDocs Pro ຊ່ວຍທ່ານຈັດການເອກະສານທາງການ, ແປງໄຟລ໌ຮູບພາບ/PDF ເປັນຂໍ້ຄວາມ (OCR), ແລະ ແປງຟອນເກົ່າໃຫ້ເປັນ Phetsarath OT ຕາມມາດຕະຖານ ໂດຍທ່ານບໍ່ຕ້ອງໄດ້ພີມຄືເມື່ອກ່ອນແລ້ວ." :
-                  "LaoDocs Pro helps you manage official documents, convert image/PDF files to text (OCR), and convert legacy fonts to standard Phetsarath OT without manual typing."
+                  "LaoDocs  ຊ່ວຍທ່ານຈັດການເອກະສານທາງການ, ແປງໄຟລ໌ຮູບພາບ,.. ແລະ ແປງຟອນເກົ່າໃຫ້ເປັນ Phetsarath OT ຕາມມາດຕະຖານ ໂດຍທ່ານບໍ່ຕ້ອງໄດ້ພີມຄືເມື່ອກ່ອນແລ້ວ. " :
+                  "LaoDocs helps you manage official documents, convert images, and convert legacy fonts to standard Phetsarath OT without manual typing."
                 }
               </span>
             </div>
@@ -360,6 +404,10 @@ export default function App() {
           onUpgradeClick={() => {
             setIsProfileModalOpen(false);
             setIsSubscriptionModalOpen(true);
+          }}
+          onLogout={() => {
+            setIsProfileModalOpen(false);
+            handleLogout();
           }}
         />
       )}

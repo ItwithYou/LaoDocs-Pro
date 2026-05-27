@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { UserProfile } from "../types";
 import { db } from "../firebase";
 import { doc, updateDoc } from "firebase/firestore";
-import { X, User, MessageCircle, ArrowLeft, Shield, Sparkles, CheckCircle2, Zap, AlertTriangle, CreditCard } from "lucide-react";
+import { X, User, MessageCircle, ArrowLeft, Shield, Sparkles, CheckCircle2, Zap, AlertTriangle, CreditCard, LogOut } from "lucide-react";
 import SupportChat from "./SupportChat";
 import { useLanguage } from "../contexts";
 
@@ -12,9 +12,10 @@ interface ProfileModalProps {
   onUpdate: (updatedProfile: UserProfile) => void;
   onLoginClick: () => void;
   onUpgradeClick?: () => void;
+  onLogout?: () => void;
 }
 
-export default function ProfileModal({ userProfile, onClose, onUpdate, onLoginClick, onUpgradeClick }: ProfileModalProps) {
+export default function ProfileModal({ userProfile, onClose, onUpdate, onLoginClick, onUpgradeClick, onLogout }: ProfileModalProps) {
   const { isLao } = useLanguage();
   const [displayName, setDisplayName] = useState(userProfile.displayName || "");
   const [birthday, setBirthday] = useState(userProfile.birthday || "");
@@ -239,6 +240,16 @@ export default function ProfileModal({ userProfile, onClose, onUpdate, onLoginCl
                     {isLao ? "ແພັກເກັດ" : "Pricing"}
                   </button>
                 </div>
+
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="w-full border border-red-200 dark:border-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/10 font-bold py-2.5 rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer mt-1"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    {isLao ? "ອອກຈາກລະບົບ (Log Out)" : "Sign Out"}
+                  </button>
+                )}
               </div>
             </div>
           </div>

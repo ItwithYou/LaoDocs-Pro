@@ -3,7 +3,7 @@ import { auth, db } from "../firebase";
 import { UserProfile } from "../types";
 import { collection, onSnapshot } from "firebase/firestore";
 import { useLanguage, useTheme } from "../contexts";
-import { FileText, LogOut, Moon, Sun, Languages, User, Sparkles, ShieldCheck, Droplet, Palette, MessageSquare } from "lucide-react";
+import { FileText, Moon, Sun, Languages, User, Sparkles, ShieldCheck, Droplet, Palette, MessageSquare } from "lucide-react";
 
 interface NavbarProps {
   userProfile: UserProfile | null;
@@ -34,25 +34,26 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
     return () => unsubscribe();
   }, [userProfile]);
 
-  const getBadgeStyle = (tier: string) => {
+  const renderPremiumBadge = (tier: string) => {
     switch (tier) {
       case "ultra":
-        return "bg-amber-100 text-amber-800 border-amber-300 font-bold animate-pulse";
+        return (
+          <span className="text-[9px] sm:text-[10px] tracking-wide font-extrabold bg-amber-100/90 text-amber-850 dark:bg-amber-950/20 dark:text-amber-300 border border-amber-300/40 uppercase shrink-0 px-2 py-0.5 rounded-md shadow-xs">
+            ULTRA
+          </span>
+        );
       case "pro":
-        return "bg-indigo-100 text-indigo-800 border-indigo-300 font-semibold";
+        return (
+          <span className="text-[9px] sm:text-[10px] tracking-wide font-extrabold bg-sky-100 dark:bg-sky-950/30 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded-md shadow-xs border border-sky-300/40 uppercase shrink-0">
+            PRO
+          </span>
+        );
       default:
-        return "bg-gray-100 text-gray-700 border-gray-300";
-    }
-  };
-
-  const getTierLabel = (tier: string) => {
-    switch (tier) {
-      case "ultra":
-        return "Ultra Enterprise";
-      case "pro":
-        return "Business Pro";
-      default:
-        return "Free Plan";
+        return (
+          <span className="text-[9px] sm:text-[10px] tracking-wide font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 uppercase shrink-0">
+            FREE
+          </span>
+        );
     }
   };
 
@@ -68,9 +69,7 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
             <h1 className="font-sans font-bold text-base sm:text-lg tracking-tight flex items-center space-x-2">
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate hidden sm:inline-block">LaoDocs Pro</span>
               <span className="bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-600 dark:from-white dark:to-slate-400 truncate sm:hidden">LaoDocs Pro</span>
-              <span className="text-[9px] sm:text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1 sm:px-1.5 py-0.5 rounded font-medium shrink-0">
-                {userProfile ? (userProfile.subscriptionTier === 'ultra' ? 'Ultra' : userProfile.subscriptionTier === 'pro' ? 'Pro' : 'Free') : 'Free'}
-              </span>
+              {renderPremiumBadge(userProfile?.subscriptionTier || "free")}
             </h1>
             <p className="hidden sm:block text-[10px] text-slate-500 dark:text-slate-400 font-mono tracking-wide leading-none truncate">{isLao ? 'ລະບົບຄຸ້ມຄອງເອກະສານທາງການ' : 'Formal Document Manager'}</p>
           </div>
@@ -137,25 +136,17 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
               </div>
             )}
             
-            <div className="hidden sm:flex items-center px-3 py-1 bg-slate-50 dark:bg-slate-800/20 border border-slate-200 dark:border-slate-800 rounded-full h-8">
-              <span className={`text-[10px] font-bold uppercase tracking-wide ${
-                !userProfile ? "text-slate-600 dark:text-slate-400" :
-                userProfile.subscriptionTier === "ultra" ? "text-amber-600 animate-pulse" : "text-slate-700 dark:text-slate-300"
-              }`}>
-                {!userProfile ? (isLao ? "ຟຣີ" : "Free") :
-                 userProfile.subscriptionTier === "ultra" ? "Ultra" :
-                 userProfile.subscriptionTier === "pro" ? "Pro" : (isLao ? "ຟຣີ" : "Free")}
-              </span>
-            </div>
+            {/* REDUNDANT RIGHT STATUS BADGE REMOVED */}
             
             {(!userProfile || userProfile.subscriptionTier === "free") && (
               <button
                 onClick={onUpgradeClick}
-                className="text-xs bg-tiffany-500 hover:bg-tiffany-600 text-white font-semibold px-2 sm:px-3 py-1.5 rounded-lg flex items-center space-x-1 transition shadow-xs cursor-pointer select-none"
+                className="text-xs bg-tiffany-500 hover:bg-tiffany-600 text-white font-semibold p-2 sm:px-3 sm:py-1.5 rounded-lg flex items-center justify-center transition shadow-xs cursor-pointer select-none"
                 id="navbar-upgrade-btn"
+                title={isLao ? 'ອັບເກຣດ' : 'Upgrade'}
               >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{isLao ? 'ອັບເກຣດ' : 'Upgrade'}</span>
+                <Sparkles className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
+                <span className="hidden sm:inline sm:ml-1">{isLao ? 'ອັບເກຣດ' : 'Upgrade'}</span>
               </button>
             )}
           </div>
@@ -175,14 +166,6 @@ export default function Navbar({ userProfile, onUpgradeClick, onLogout, onLoginC
                 ) : (
                   <User className="w-3.5 h-3.5" />
                 )}
-              </button>
-              <button
-                onClick={onLogout}
-                className="w-7 h-7 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full text-slate-400 hover:text-red-500 transition cursor-pointer"
-                title={isLao ? "ອອກຈາກລະບົບ" : "Log out"}
-                id="navbar-logout-btn"
-              >
-                <LogOut className="w-3.5 h-3.5" />
               </button>
             </div>
           ) : (

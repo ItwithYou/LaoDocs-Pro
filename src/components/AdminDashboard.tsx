@@ -11,7 +11,7 @@ interface AdminDashboardProps {
   onUpdate: (updatedProfile: UserProfile) => void;
   onClose?: () => void;
   inline?: boolean;
-  initialTab?: 'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents';
+  initialTab?: 'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents' | 'settings';
 }
 
 export default function AdminDashboard({ userProfile, onUpdate, onClose, inline = false, initialTab }: AdminDashboardProps) {
@@ -21,8 +21,32 @@ export default function AdminDashboard({ userProfile, onUpdate, onClose, inline 
   const [aiTypes, setAiTypes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
-  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents'>(initialTab || 'requests');
+  const [activeTab, setActiveTab] = useState<'users' | 'requests' | 'tracking' | 'templates' | 'aitypes' | 'bankqrs' | 'billing' | 'chat' | 'documents' | 'settings'>(initialTab || 'requests');
   const [unreadChatCount, setUnreadChatCount] = useState(0);
+  const [usersSortBy, setUsersSortBy] = useState<'createdAt' | 'spendUSD' | 'tokens' | 'role'>('createdAt');
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a: any, b: any) => {
+      if (usersSortBy === 'spendUSD') {
+        const spendA = a.totalSpendUSD || 0;
+        const spendB = b.totalSpendUSD || 0;
+        return spendB - spendA; // Descending (who spend more first)
+      }
+      if (usersSortBy === 'tokens') {
+        const tokensA = a.totalTokens || 0;
+        const tokensB = b.totalTokens || 0;
+        return tokensB - tokensA; // Descending
+      }
+      if (usersSortBy === 'role') {
+        const roleA = a.role === 'admin' ? 1 : 0;
+        const roleB = b.role === 'admin' ? 1 : 0;
+        return roleB - roleA; // Admins first
+      }
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
+  }, [users, usersSortBy]);
   
   const [bankQrUrlPro, setBankQrUrlPro] = useState("");
   const [bankQrUrlUltra, setBankQrUrlUltra] = useState("");
@@ -581,6 +605,13 @@ ${docItem.originalText || ''}
     fetchSettings();
     fetchTemplates();
     fetchAiTypes();
+    fetchApiKeysStatus();
+
+    const interval = setInterval(() => {
+      fetchUsers();
+    }, 15000);
+
+    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -851,6 +882,58 @@ ${docItem.originalText || ''}
     }
   };
 
+  const [geminiApiKeyInput, setGeminiApiKeyInput] = useState("");
+  const [selectedToolAction, setSelectedToolAction] = useState("global");
+  const [isSavingApiKey, setIsSavingApiKey] = useState(false);
+  const [apiKeysStatus, setApiKeysStatus] = useState<any[]>([]);
+  const [loadingApiKeys, setLoadingApiKeys] = useState(false);
+
+  const fetchApiKeysStatus = async () => {
+    setLoadingApiKeys(true);
+    try {
+      const res = await fetch("/api/admin/get-api-keys");
+      const data = await res.json();
+      if (res.ok && data.keys) {
+        setApiKeysStatus(data.keys);
+      }
+    } catch (err) {
+      console.error("Failed to fetch API key statuses:", err);
+    } finally {
+      setLoadingApiKeys(false);
+    }
+  };
+
+  const handleSaveGeminiApiKey = async () => {
+    if (!geminiApiKeyInput || geminiApiKeyInput.trim().length === 0) return;
+    setIsSavingApiKey(true);
+    try {
+      // Send to backend via our new API to add to run-time
+      const res = await fetch("/api/admin/set-api-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          apiKey: geminiApiKeyInput.trim(),
+          toolAction: selectedToolAction
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to set API Key in backend");
+      
+      // Optionally store to Firestore so it can be re-fetched or kept as record
+      await safeSetDoc(doc(db, "settings", `general_${selectedToolAction}`), { geminiApiKey: geminiApiKeyInput.trim() }, { merge: true });
+      
+      setMessage({ type: "success", text: `AI API Key added & submitted successfully for ${selectedToolAction === 'global' ? 'Global Fallback' : selectedToolAction}.` });
+      setGeminiApiKeyInput(""); // reset input after adding
+      fetchApiKeysStatus();
+    } catch (err: any) {
+      console.error(err);
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setIsSavingApiKey(false);
+      setTimeout(() => setMessage(null), 5000);
+    }
+  };
+
   const fetchUsers = async () => {
     setLoading(true);
     try {
@@ -878,6 +961,8 @@ ${docItem.originalText || ''}
         totalDocs += docCount;
 
         let userStorageBytes = 0;
+        let userInputTokens = 0;
+        let userOutputTokens = 0;
         docsSnap.forEach(d => {
           const data = d.data();
           const textLength = (data.convertedText?.length || 0) + (data.originalText?.length || 0) + (data.summary?.length || 0);
@@ -889,22 +974,32 @@ ${docItem.originalText || ''}
           const outputCharCount = (data.convertedText?.length || 0) + (data.summary?.length || 0);
           const outputT = Math.max(400, Math.ceil(outputCharCount / 1.5));
           
+          userInputTokens += inputT;
+          userOutputTokens += outputT;
           aggregateInputTokens += inputT;
           aggregateOutputTokens += outputT;
         });
         totalStorage += userStorageBytes;
 
+        const userSpendUSD = (userInputTokens * 0.000000075) + (userOutputTokens * 0.000000300);
+
         (user as any).docCount = docCount;
         (user as any).storageBytes = userStorageBytes;
+        (user as any).inputTokens = userInputTokens;
+        (user as any).outputTokens = userOutputTokens;
+        (user as any).totalTokens = userInputTokens + userOutputTokens;
+        (user as any).totalSpendUSD = userSpendUSD;
 
-        // Custom activity definition: User has created at least 1 document or runs paid level
-        const hasCreatedDocs = docCount > 0;
-        const subActive = user.subscriptionTier && user.subscriptionTier !== 'free';
-        const isActive = hasCreatedDocs || subActive;
-        if (isActive) {
+        // Real online active definition: User is marked online and has active ping within the last 2 minutes
+        const isOnlineStatus = user.isOnline === true;
+        const lastActiveTime = user.lastActiveAt ? new Date(user.lastActiveAt).getTime() : 0;
+        const isWithinTimeWindow = (Date.now() - lastActiveTime) < 120000; // 2 minutes active window
+        const isOnlineNow = isOnlineStatus && isWithinTimeWindow;
+
+        if (isOnlineNow) {
           activeCount++;
         }
-        (user as any).isActiveUser = isActive;
+        (user as any).isActiveUser = isOnlineNow;
 
         if (user.subscriptionTier === 'ultra') ultra++;
         else if (user.subscriptionTier === 'pro') pro++;
@@ -1195,6 +1290,15 @@ ${docItem.originalText || ''}
                 <span className="hidden md:inline">Bank QR</span>
                 <span className="md:hidden">QR</span>
               </button>
+
+              <button 
+                onClick={() => setActiveTab('settings')} 
+                className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest transition-all cursor-pointer whitespace-nowrap md:w-full border-2 ${activeTab === 'settings' ? 'bg-slate-900 text-white border-slate-900 shadow-xl shadow-slate-900/10' : 'bg-white dark:bg-slate-900 border-transparent text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-100'}`}
+              >
+                <KeyRound className="w-4 h-4 shrink-0 transition" />
+                <span className="hidden md:inline">Settings</span>
+                <span className="md:hidden">Settings</span>
+              </button>
             </div>
 
             {/* Tab content wrapper */}
@@ -1453,6 +1557,151 @@ ${docItem.originalText || ''}
                   >
                     {isSavingQr ? 'Saving...' : 'Save QRs'}
                   </button>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === 'settings' ? (
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-md flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-tiffany-500" />
+                AI Service Hub configuration
+              </h3>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-2xl">Deploy an updated Gemini API key straight to the container's service hub for realtime processing.</p>
+              
+              <div className="flex flex-col gap-4 max-w-xl">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Target Tool Engine</label>
+                  <select 
+                    value={selectedToolAction}
+                    onChange={(e) => setSelectedToolAction(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tiffany-500/50 focus:border-tiffany-500"
+                  >
+                    <option value="global">Global Default / Fallback</option>
+                    <option value="retype">Tool 1: Retype Document</option>
+                    <option value="format-original">Tool 2: Format Original</option>
+                    <option value="ocr">Tool 3: Recommended AI</option>
+                    <option value="generate">Tool 4: Draft Document</option>
+                    <option value="font-convert">Tool 5: Convert Raw Text</option>
+                  </select>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Gemini/Google AI API Key</label>
+                  <input
+                    type="password"
+                    value={geminiApiKeyInput}
+                    onChange={(e) => setGeminiApiKeyInput(e.target.value)}
+                    placeholder="AIzaSy..."
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-4 py-3 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-tiffany-500/50 focus:border-tiffany-500"
+                  />
+                  <p className="text-[10px] text-slate-400">This key is instantly injected into memory without requiring a server restart.</p>
+                </div>
+
+                <div className="flex mt-2">
+                  <button 
+                    onClick={handleSaveGeminiApiKey}
+                    disabled={isSavingApiKey || !geminiApiKeyInput || geminiApiKeyInput.trim().length < 5}
+                    className="bg-tiffany-600 hover:bg-tiffany-700 text-white font-bold py-2.5 px-6 rounded-lg text-sm transition shadow-sm disabled:opacity-50 cursor-pointer"
+                  >
+                    {isSavingApiKey ? 'Submitting Key...' : 'Submit & Activate Key'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Verified Active API Keys Table */}
+              <div className="mt-8 border-t border-slate-205 dark:border-slate-800 pt-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                      Verified Active API Keys Only
+                    </h4>
+                    <p className="text-[11px] text-slate-500 mt-0.5">Only verified active keys are permitted for document conversion or drafting queries.</p>
+                  </div>
+                  <button 
+                    onClick={fetchApiKeysStatus}
+                    disabled={loadingApiKeys}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-750 px-3 py-1.5 rounded-lg transition text-slate-605 dark:text-slate-300 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${loadingApiKeys ? 'animate-spin' : ''}`} />
+                    Refresh Keys
+                  </button>
+                </div>
+
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs text-slate-600 dark:text-slate-350">
+                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-2.5">Masked Key Identifier</th>
+                        <th className="px-4 py-2.5">Key Origin Profile</th>
+                        <th className="px-4 py-2.5">Live Validity Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {loadingApiKeys && apiKeysStatus.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-8 text-center text-slate-400">
+                            <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-1 text-tiffany-500" />
+                            Checking key registers...
+                          </td>
+                        </tr>
+                      ) : apiKeysStatus.length === 0 ? (
+                        <tr>
+                          <td colSpan={3} className="px-4 py-6 text-center text-slate-400 italic">
+                            No API Keys loaded or configured.
+                          </td>
+                        </tr>
+                      ) : (
+                        apiKeysStatus.map((keyInfo, index) => (
+                          <tr key={index} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/10 transition">
+                            <td className="px-4 py-3 font-mono font-bold text-slate-700 dark:text-slate-300">
+                              {keyInfo.masked}
+                            </td>
+                            <td className="px-4 py-3">
+                              {keyInfo.isDefault ? (
+                                <span className="bg-emerald-50 text-emerald-800 dark:bg-emerald-950/20 dark:text-emerald-405 font-black uppercase px-2 py-0.5 rounded text-[9px] tracking-wider">
+                                  Default Core Key
+                                </span>
+                              ) : keyInfo.isEnv ? (
+                                <span className="bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-400 font-black uppercase px-2 py-0.5 rounded text-[9px] tracking-wider">
+                                  Environment Setting
+                                </span>
+                              ) : (
+                                <span className="bg-blue-50 text-blue-800 dark:bg-blue-950/20 dark:text-blue-400 font-black uppercase px-2 py-0.5 rounded text-[9px] tracking-wider">
+                                  Runtime Custom
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-4 py-3">
+                              {keyInfo.status === "Active & Working" ? (
+                                <span className="inline-flex items-center gap-1.5 font-bold text-emerald-600 dark:text-emerald-400">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-[pulse_2s_infinite]" />
+                                  Active & Working
+                                </span>
+                              ) : keyInfo.status === "Checking..." ? (
+                                <span className="inline-flex items-center gap-1 text-slate-400">
+                                  <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                                  Verifying...
+                                </span>
+                              ) : (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="inline-flex items-center gap-1.5 font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest text-[10px]">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                                    {keyInfo.status}
+                                  </span>
+                                  {keyInfo.errorMessage && (
+                                    <span className="text-[9px] text-slate-400 italic block max-w-sm truncate" title={keyInfo.errorMessage}>
+                                      {keyInfo.errorMessage}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
@@ -2034,131 +2283,188 @@ ${docItem.originalText || ''}
               </div>
             </div>
           ) : (
+            <div className="space-y-4">
+              {/* Header with Search and Sort controls */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/20 p-4 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <div>
+                  <h3 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-2 text-sm">
+                    <Users className="w-4 h-4 text-tiffany-500" />
+                    Member Accounts & Analytics Directory
+                  </h3>
+                  <p className="text-[10px] text-slate-400 mt-0.5">
+                    Manage membership roles, subscription tiers, expiration dates, and monitor Gemini API token usage and cost.
+                  </p>
+                </div>
+                
+                {/* Search & Sort UI */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="relative">
+                    <select
+                      value={usersSortBy}
+                      onChange={(e) => setUsersSortBy(e.target.value as any)}
+                      className="appearance-none text-[11px] font-black uppercase tracking-wider bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 pr-8 focus:ring-2 focus:ring-tiffany-500 outline-none cursor-pointer shadow-xs"
+                    >
+                      <option value="createdAt">Sort: Recency (Joined Date)</option>
+                      <option value="spendUSD">Sort: Gemini Spend (Highest first)</option>
+                      <option value="tokens">Sort: Total Tokens Used</option>
+                      <option value="role">Sort: Admins First</option>
+                    </select>
+                    <ChevronDown className="w-3 text-slate-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
+                  </div>
+                </div>
+              </div>
 
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
-                <thead className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
-                  <tr>
-                    <th className="px-4 py-3">Member Details</th>
-                    <th className="px-4 py-3">Access Level</th>
-                    <th className="px-4 py-3">Subscription</th>
-                    <th className="px-4 py-3">Valid Until</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                  {loading ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-12 text-center text-slate-400">
-                        <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-tiffany-500" />
-                        <p className="text-xs">Loading database...</p>
-                      </td>
-                    </tr>
-                  ) : users.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="px-4 py-8 text-center text-slate-400 text-xs italic">
-                        No registered members found.
-                      </td>
-                    </tr>
-                  ) : (
-                    users.map((user) => (
-                      <tr key={user.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition group">
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
-                              {user.profilePhoto ? (
-                                <img src={user.profilePhoto} alt="" className="w-full h-full object-cover" />
-                              ) : (
-                                <User className="w-4 h-4 text-slate-400" />
-                              )}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-extrabold text-slate-900 dark:text-white truncate text-sm flex items-center gap-1.5">
-                                {user.displayName || "Lao Business Partner"}
-                                {(user as any).isActiveUser && (
-                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
-                                )}
-                              </span>
-                              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{user.email}</span>
-                              <span className="text-[9px] text-slate-400 mt-0.5">Joined: {user.createdAt && (user.createdAt as any).toDate ? (user.createdAt as any).toDate().toLocaleDateString() : new Date(user.createdAt || Date.now()).toLocaleDateString()}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="relative w-max">
-                            <select
-                              value={user.role || 'user'}
-                              onChange={(e) => handleUpdateRole(user.userId, e.target.value as 'user' | 'admin')}
-                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
-                                user.role === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
-                                'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                              }`}
-                            >
-                              <option value="user">User</option>
-                              <option value="admin">Admin</option>
-                            </select>
-                            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="relative w-max">
-                            <select
-                              value={user.subscriptionTier || 'free'}
-                              onChange={(e) => handleUpdateSubscription(user.userId, e.target.value as 'free' | 'pro' | 'ultra', user.subscriptionEnd || null)}
-                              className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
-                                user.subscriptionTier === 'ultra' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20' :
-                                user.subscriptionTier === 'pro' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20' :
-                                'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                              }`}
-                            >
-                              <option value="free">Free</option>
-                              <option value="pro">Pro</option>
-                              <option value="ultra">Ultra</option>
-                            </select>
-                            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col gap-1.5">
-                            <input
-                              id={`expiry-${user.userId}`}
-                              type="date"
-                              defaultValue={user.subscriptionEnd ? user.subscriptionEnd.split('T')[0] : ""}
-                              className="text-[10px] font-bold p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-tiffany-500 w-[130px] shadow-xs"
-                            />
-                            <button 
-                              onClick={() => {
-                                const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
-                                if (el) el.value = "";
-                                handleUpdateSubscription(user.userId, user.subscriptionTier, null);
-                              }}
-                              className="text-[9px] font-black text-tiffany-600 dark:text-tiffany-400 hover:text-tiffany-700 uppercase tracking-widest text-left w-fit px-1 select-none cursor-pointer"
-                            >
-                              Set Lifetime
-                            </button>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => {
-                              const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
-                              const dateVal = el?.value || null;
-                              handleUpdateSubscription(user.userId, user.subscriptionTier, dateVal ? new Date(dateVal).toISOString() : null);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-black dark:bg-tiffany-600 dark:hover:bg-tiffany-500 transition-all shadow-md active:scale-95 cursor-pointer"
-                          >
-                            <RotateCw className="w-3.5 h-3.5" />
-                            Apply Changes
-                          </button>
-                        </td>
+              {/* Users Table */}
+              <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-600 dark:text-slate-300">
+                    <thead className="bg-slate-50 dark:bg-slate-800/80 text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                      <tr>
+                        <th className="px-4 py-3">Member Details</th>
+                        <th className="px-4 py-3 font-mono">Used Tokens & Cost</th>
+                        <th className="px-4 py-3">Access Level</th>
+                        <th className="px-4 py-3">Subscription</th>
+                        <th className="px-4 py-3">Valid Until</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {loading ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-12 text-center text-slate-400">
+                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-tiffany-500" />
+                            <p className="text-xs">Loading database...</p>
+                          </td>
+                        </tr>
+                      ) : sortedUsers.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-8 text-center text-slate-400 text-xs italic">
+                            No registered members found.
+                          </td>
+                        </tr>
+                      ) : (
+                        sortedUsers.map((user) => (
+                          <tr key={user.userId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition group">
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 border border-slate-200 dark:border-slate-700">
+                                  {user.profilePhoto ? (
+                                    <img src={user.profilePhoto} alt="" className="w-full h-full object-cover" />
+                                  ) : (
+                                    <User className="w-4 h-4 text-slate-400" />
+                                  )}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                  <span className="font-extrabold text-slate-900 dark:text-white truncate text-sm flex items-center gap-1.5">
+                                    {user.displayName || "Lao Business Partner"}
+                                    {(user as any).isActiveUser && (
+                                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]" />
+                                    )}
+                                  </span>
+                                  <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">{user.email}</span>
+                                  <span className="text-[9px] text-slate-400 mt-0.5">Joined: {user.createdAt && (user.createdAt as any).toDate ? (user.createdAt as any).toDate().toLocaleDateString() : new Date(user.createdAt || Date.now()).toLocaleDateString()}</span>
+                                </div>
+                              </div>
+                            </td>
+                            {/* Gemini Token usage and cost column */}
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col font-mono text-[10px] gap-0.5">
+                                <span className="font-bold text-slate-800 dark:text-slate-200">
+                                  {((user as any).totalTokens || 0).toLocaleString()} tokens
+                                </span>
+                                <span className="text-[9px] text-slate-405 dark:text-slate-400">
+                                  (In: {((user as any).inputTokens || 0).toLocaleString()} | Out: {((user as any).outputTokens || 0).toLocaleString()})
+                                </span>
+                                <span className="text-[10px] text-tiffany-600 dark:text-tiffany-400 font-extrabold mt-1">
+                                  Cost: ${((user as any).totalSpendUSD || 0).toLocaleString(undefined, { minimumFractionDigits: 5, maximumFractionDigits: 5 })}
+                                </span>
+                                <span className="text-[9px] text-slate-400 font-semibold">
+                                  ~{(((user as any).totalSpendUSD || 0) * 20000).toLocaleString(undefined, { maximumFractionDigits: 1 })} LAK
+                                </span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="relative w-max">
+                                <select
+                                  value={user.role || 'user'}
+                                  onChange={(e) => handleUpdateRole(user.userId, e.target.value as 'user' | 'admin')}
+                                  className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
+                                    user.role === 'admin' ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                                    'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                  }`}
+                                >
+                                  <option value="user">User</option>
+                                  <option value="admin">Admin</option>
+                                </select>
+                                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="relative w-max">
+                                <select
+                                  value={user.subscriptionTier || 'free'}
+                                  onChange={(e) => handleUpdateSubscription(user.userId, e.target.value as 'free' | 'pro' | 'ultra', user.subscriptionEnd || null)}
+                                  className={`appearance-none outline-none border focus:ring-2 focus:ring-tiffany-500 rounded-lg text-[10px] font-black uppercase tracking-wider px-3 py-1.5 cursor-pointer pr-8 shadow-xs ${
+                                    user.subscriptionTier === 'ultra' ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20' :
+                                    user.subscriptionTier === 'pro' ? 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-500/10 dark:text-indigo-400 dark:border-indigo-500/20' :
+                                    'bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+                                  }`}
+                                >
+                                  <option value="free">Free</option>
+                                  <option value="pro">Pro</option>
+                                  <option value="ultra">Ultra</option>
+                                </select>
+                                <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-40" />
+                              </div>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex flex-col gap-1.5">
+                                <input
+                                  id={`expiry-${user.userId}`}
+                                  type="date"
+                                  defaultValue={user.subscriptionEnd ? user.subscriptionEnd.split('T')[0] : ""}
+                                  className="text-[10px] font-bold p-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg outline-none focus:ring-2 focus:ring-tiffany-500 w-[130px] shadow-xs"
+                                />
+                                <button 
+                                  onClick={() => {
+                                    const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
+                                    if (el) el.value = "";
+                                    handleUpdateSubscription(user.userId, user.subscriptionTier, null);
+                                  }}
+                                  className="text-[9px] font-black text-tiffany-600 dark:text-tiffany-400 hover:text-tiffany-700 uppercase tracking-widest text-left w-fit px-1 select-none cursor-pointer"
+                                >
+                                  Set Lifetime
+                                </button>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-right">
+                              <button
+                                onClick={() => {
+                                  const el = document.getElementById(`expiry-${user.userId}`) as HTMLInputElement;
+                                  const dateVal = el?.value ? el.value.trim() : "";
+                                  let formattedDate: string | null = null;
+                                  if (dateVal) {
+                                    const parsedDate = new Date(dateVal);
+                                    if (!isNaN(parsedDate.getTime())) {
+                                      formattedDate = parsedDate.toISOString();
+                                    }
+                                  }
+                                  handleUpdateSubscription(user.userId, user.subscriptionTier, formattedDate);
+                                }}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider text-white bg-slate-900 hover:bg-black dark:bg-tiffany-600 dark:hover:bg-tiffany-500 transition-all shadow-md active:scale-95 cursor-pointer"
+                              >
+                                <RotateCw className="w-3.5 h-3.5" />
+                                Apply Changes
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
           )}
             </div>
           </div>
