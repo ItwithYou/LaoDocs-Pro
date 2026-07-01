@@ -64,7 +64,7 @@ app.get("/api/admin/get-api-keys", async (req, res) => {
         masked,
         status,
         errorMessage,
-        isDefault: k === "AIzaSyA5K4OEqBEsCrQPBzLadiRg-BN6YZXzGO4",
+        isDefault: false,
         isEnv: k === process.env.GEMINI_API_KEY
       });
     }
@@ -371,24 +371,41 @@ app.post("/api/export/docx", async (req, res) => {
           footer: 720,
           gutter: 0
         },
-        font: "Times New Roman"
+        // Keep the Lao font on the fallback path too, otherwise Lao glyphs
+        // render as empty boxes when the primary generation fails.
+        font: "Phetsarath OT"
       });
     }
 
     const zip = await JSZip.loadAsync(fileBuffer);
 
+    // Dual-font mapping: Latin letters & digits use Times New Roman, while Lao
+    // (a complex script) is routed to Phetsarath OT via the w:cs / w:eastAsia
+    // slots. If a viewer ever shows Lao as boxes, set every typeface below to
+    // "Phetsarath OT" to force the Lao font everywhere.
     const applyDualFonts = async (filePath) => {
       if (zip.file(filePath)) {
         let xml = await zip.file(filePath).async("string");
-        // Force ASCII, HAnsi, Complex Script, and EastAsia font mappings to map explicitly to dual fonts
-        // Clean out any conflicting theme fonts that trigger default Calibri rendering in Word
-        xml = xml.replace(/<w:rFonts\b[^>]*?\/?>/g, '<w:rFonts w:ascii="Phetsarath OT" w:hAnsi="Phetsarath OT" w:cs="Phetsarath OT" w:eastAsia="Phetsarath OT" w:hint="default" />');
+        xml = xml.replace(/<w:rFonts\b[^>]*?\/?>/g, '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Phetsarath OT" w:eastAsia="Phetsarath OT" w:hint="default" />');
+        zip.file(filePath, xml);
+      }
+    };
+
+    // Rewrite the theme font scheme so Word never falls back to Calibri for
+    // either Latin or Lao text.
+    const applyThemeFonts = async (filePath) => {
+      if (zip.file(filePath)) {
+        let xml = await zip.file(filePath).async("string");
+        xml = xml.replace(/<a:latin\b[^>]*?\/?>/g, '<a:latin typeface="Times New Roman"/>');
+        xml = xml.replace(/<a:ea\b[^>]*?\/?>/g, '<a:ea typeface="Phetsarath OT"/>');
+        xml = xml.replace(/<a:cs\b[^>]*?\/?>/g, '<a:cs typeface="Phetsarath OT"/>');
         zip.file(filePath, xml);
       }
     };
 
     await applyDualFonts("word/styles.xml");
     await applyDualFonts("word/document.xml");
+    await applyThemeFonts("word/theme/theme1.xml");
 
     const modifiedBuffer = await zip.generateAsync({ type: "nodebuffer" });
     const buffer = Buffer.from(modifiedBuffer);

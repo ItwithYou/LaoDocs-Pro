@@ -1,6 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const KEY_CANDIDATES: string[] = ["AIzaSyA5K4OEqBEsCrQPBzLadiRg-BN6YZXzGO4"];
+// API keys are NOT hard-coded. Provide GEMINI_API_KEY via environment (.env.local
+// locally, or the host's env vars in production). Admins can also add keys at
+// runtime through the Settings panel (see addRuntimeApiKey below).
+const KEY_CANDIDATES: string[] = [];
 const TOOL_API_KEYS: Record<string, string> = {};
 
 export function addRuntimeApiKey(key: string, toolAction?: string) {
@@ -14,8 +17,9 @@ export function addRuntimeApiKey(key: string, toolAction?: string) {
   }
 }
 
+// Model can be overridden with the GEMINI_MODEL env var; defaults to a known-good model.
 export const getModelForPromptType = (promptType: string) => {
-  return "gemini-3.5-flash"; 
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 };
 
 export function getCandidateApiKeys(promptType?: string): string[] {
