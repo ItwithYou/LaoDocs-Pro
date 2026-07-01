@@ -22,6 +22,42 @@ export const getModelForPromptType = (promptType: string) => {
   return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 };
 
+// ---------------------------------------------------------------------------
+// Multi-provider "bring your own key" support.
+// Users paste their own key; we auto-detect the provider from the key shape.
+// ---------------------------------------------------------------------------
+export type AIProvider = "gemini" | "openai" | "openrouter";
+
+export interface AIAuth {
+  apiKey?: string;
+  provider?: AIProvider | string;
+  model?: string;
+}
+
+// Guess the provider from the API key format.
+export function detectProvider(key?: string): AIProvider {
+  const k = (key || "").trim();
+  if (k.startsWith("sk-or-")) return "openrouter";
+  if (k.startsWith("sk-")) return "openai";
+  if (k.startsWith("AIza")) return "gemini";
+  // Unknown/empty: if a key was given assume an OpenAI-compatible endpoint,
+  // otherwise fall back to Gemini (server env key).
+  return k ? "openai" : "gemini";
+}
+
+function resolveProvider(auth?: AIAuth): AIProvider {
+  const p = (auth?.provider || "").toString().trim().toLowerCase();
+  if (p === "gemini" || p === "openai" || p === "openrouter") return p;
+  return detectProvider(auth?.apiKey);
+}
+
+// Default model per provider when the user does not specify one.
+function defaultModelFor(provider: AIProvider): string {
+  if (provider === "openrouter") return process.env.OPENROUTER_MODEL?.trim() || "meta-llama/llama-3.2-11b-vision-instruct:free";
+  if (provider === "openai") return process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
+}
+
 export function getCandidateApiKeys(promptType?: string): string[] {
   const keys: string[] = [];
   
@@ -59,11 +95,30 @@ export async function callGeminiConvert(
   contents: any[], 
   promptType: string, 
   isOcr: boolean = false,
-  customSystemInstruction?: string
+  customSystemInstruction?: string,
+  auth?: AIAuth
 ): Promise<GeminiResponseSchema> {
-    const keys = getCandidateApiKeys(promptType);
+    const baseSystemInstruction = "You are an expert document transcriber and translator. You read documents (ALL pages of multi-page PDFs, images, or raw text) and convert them accurately. When processing PDFs, you MUST process and convert ALL PAGES of the document, maintaining the sequential order.";
+    const systemInstruction = customSystemInstruction
+      ? customSystemInstruction
+      : (isOcr
+          ? baseSystemInstruction + " You are ALSO a Lao government administrative assistant. You structure letters in formal administrative templates and translate accurately."
+          : baseSystemInstruction);
+
+    const provider = resolveProvider(auth);
+
+    // OpenAI / OpenRouter / any OpenAI-compatible provider.
+    if (provider !== "gemini") {
+      if (!auth?.apiKey) {
+        throw new Error(`An API key is required to use ${provider}. Add your key in the AI Keys panel.`);
+      }
+      return callOpenAICompatible(contents, systemInstruction, { ...auth, provider });
+    }
+
+    // Gemini path — use the user's own key if provided, else server env/candidates.
+    const keys = auth?.apiKey ? [auth.apiKey.trim()] : getCandidateApiKeys(promptType);
     if (keys.length === 0) {
-      throw new Error("Gemini API key is missing. Please configuration your key in Settings or contact the developer.");
+      throw new Error("No Gemini API key found. Add your own key in the AI Keys panel, or set GEMINI_API_KEY on the server.");
     }
 
     const payload: any[] = [];
@@ -107,17 +162,8 @@ export async function callGeminiConvert(
       },
     });
 
-    const baseSystemInstruction = "You are an expert document transcriber and translator. You read documents (ALL pages of multi-page PDFs, images, or raw text) and convert them accurately. When processing PDFs, you MUST process and convert ALL PAGES of the document, maintaining the sequential order.";
-    const model = getModelForPromptType(promptType);
-    
-    // Choose the active system instruction
-    const systemInstruction = customSystemInstruction 
-      ? customSystemInstruction 
-      : (isOcr 
-          ? baseSystemInstruction + " You are ALSO a Lao government administrative assistant. You structure letters in formal administrative templates and translate accurately."
-          : baseSystemInstruction);
-
-    console.log(`[Gemini Request] Mapping and processing via Google GenAI on ${model}...`);
+    const model = auth?.model?.trim() || getModelForPromptType(promptType);
+    console.log(`[AI Request] provider=gemini model=${model}...`);
 
     const response = await ai.models.generateContent({
       model: model,
@@ -233,5 +279,105 @@ function createEmptyResponse(reason: string): GeminiResponseSchema {
     referenceDate: "",
     recommendedFormat: "Word"
   };
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI-compatible providers (OpenAI, OpenRouter, and any compatible endpoint).
+// Uses the standard /chat/completions API with vision (image) content blocks.
+// ---------------------------------------------------------------------------
+const JSON_FIELDS_INSTRUCTION = `
+
+Return ONLY a single valid JSON object (no markdown fences, no commentary) with these exact string fields:
+"title", "sender", "receiver", "originalText", "convertedText", "flowStatus", "summary", "referenceNo", "referenceDate", "recommendedFormat".
+- "convertedText" must contain the fully formatted HTML body of the document.
+- "recommendedFormat" must be one of: "Word", "Excel", "PowerPoint", "PDF".`;
+
+async function callOpenAICompatible(
+  contents: any[],
+  systemInstruction: string,
+  auth: AIAuth
+): Promise<GeminiResponseSchema> {
+  const provider = (auth.provider as AIProvider) || "openai";
+  const key = (auth.apiKey || "").trim();
+  const model = auth.model?.trim() || defaultModelFor(provider);
+
+  const baseUrl =
+    provider === "openrouter" ? "https://openrouter.ai/api/v1" : "https://api.openai.com/v1";
+
+  // Convert our generic content parts into OpenAI message content blocks.
+  const userBlocks: any[] = [];
+  let pdfSkipped = false;
+  for (const part of contents) {
+    if (typeof part === "string") {
+      userBlocks.push({ type: "text", text: part });
+    } else if (part && typeof part === "object") {
+      if (part.text) {
+        userBlocks.push({ type: "text", text: part.text });
+      } else if (part.inlineData) {
+        const mime = part.inlineData.mimeType || "";
+        const dataUrl = `data:${mime};base64,${part.inlineData.data}`;
+        if (mime.includes("pdf")) {
+          if (provider === "openrouter") {
+            // OpenRouter supports file inputs for some models.
+            userBlocks.push({ type: "file", file: { filename: "document.pdf", file_data: dataUrl } });
+          } else {
+            pdfSkipped = true;
+          }
+        } else {
+          userBlocks.push({ type: "image_url", image_url: { url: dataUrl } });
+        }
+      }
+    }
+  }
+  if (pdfSkipped) {
+    userBlocks.push({
+      type: "text",
+      text: "[A PDF was uploaded but this provider cannot read PDFs directly. For PDF files, please use a Google Gemini key.]",
+    });
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${key}`,
+  };
+  if (provider === "openrouter") {
+    headers["HTTP-Referer"] = process.env.APP_URL || "https://laodocs.com";
+    headers["X-Title"] = "LaoDocs Pro";
+  }
+
+  const body: any = {
+    model,
+    messages: [
+      { role: "system", content: systemInstruction + JSON_FIELDS_INSTRUCTION },
+      { role: "user", content: userBlocks },
+    ],
+    temperature: 0.2,
+    max_tokens: 8000,
+  };
+  // Native JSON mode is reliable on OpenAI; many free OpenRouter models reject it,
+  // so we rely on the prompt + robust parser there instead.
+  if (provider === "openai") {
+    body.response_format = { type: "json_object" };
+  }
+
+  console.log(`[AI Request] provider=${provider} model=${model}...`);
+
+  const resp = await fetch(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text().catch(() => "");
+    throw new Error(`${provider} API error ${resp.status}: ${errText.slice(0, 400)}`);
+  }
+
+  const json: any = await resp.json();
+  const rawText: string = json?.choices?.[0]?.message?.content || "";
+  if (!rawText) {
+    return createEmptyResponse(`${provider} returned an empty response`);
+  }
+  return safeParseGeminiResponse(rawText);
 }
 

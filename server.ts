@@ -78,16 +78,26 @@ app.get("/api/admin/get-api-keys", async (req, res) => {
 // AI Document Parser & Font Converter endpoint
 app.post("/api/gemini/convert", async (req, res) => {
   try {
-    const { 
-        fileBase64, 
-        mimeType, 
-        promptType, 
-        rawLaoText, 
-        documentContext, 
-        referenceFormatFileBase64, 
+    const {
+        fileBase64,
+        mimeType,
+        promptType,
+        rawLaoText,
+        documentContext,
+        referenceFormatFileBase64,
         referenceFormatFileMimeType,
-        targetLanguage
+        targetLanguage,
+        userApiKey,
+        provider,
+        model
     } = req.body;
+
+    // "Bring your own key": the user's own API key (Gemini/OpenAI/OpenRouter) is
+    // sent per-request and never stored on the server. Falls back to the server
+    // env key only when the user hasn't supplied one.
+    const auth = (userApiKey && String(userApiKey).trim())
+      ? { apiKey: String(userApiKey).trim(), provider, model }
+      : undefined;
 
     let isWordDoc = false;
     let processedRawText = rawLaoText || "";
@@ -100,19 +110,19 @@ app.post("/api/gemini/convert", async (req, res) => {
     let result;
 
     if (promptType === "generate") {
-        result = await draftDocument(processedRawText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType, targetLanguage);
-    } 
+        result = await draftDocument(processedRawText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType, targetLanguage, auth);
+    }
     else if (promptType === "font-convert" || isWordDoc) {
-        result = await convertRawText(processedRawText);
-    } 
+        result = await convertRawText(processedRawText, auth);
+    }
     else if (promptType === "retype") {
-        result = await retypeDocument(fileBase64, mimeType);
-    } 
+        result = await retypeDocument(fileBase64, mimeType, auth);
+    }
     else if (promptType === "format-original") {
-        result = await formatOriginal(fileBase64, mimeType);
-    } 
+        result = await formatOriginal(fileBase64, mimeType, auth);
+    }
     else {
-        result = await processRecommended(fileBase64, mimeType, targetLanguage);
+        result = await processRecommended(fileBase64, mimeType, targetLanguage, auth);
     }
 
     return res.json(result);

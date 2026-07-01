@@ -3,8 +3,11 @@ import { extractText } from "../lib/textExtractor";
 import { UserProfile, LaoLetterDocument, SUBSCRIPTION_PLANS, DocumentTemplate, AIDocumentType } from "../types";
 import { db, handleFirestoreError, OperationType, safeGetDocs, safeSetDoc } from "../firebase";
 import { doc, serverTimestamp, collection, query, orderBy } from "firebase/firestore";
-import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock, Printer, Edit, Save, Presentation, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, ImagePlus, Trash2, Maximize2, Minimize2, X } from "lucide-react";
+import { UploadCloud, FileType, Languages, Check, ArrowRight, ArrowDown, Download, Sparkles, AlertCircle, Copy, FileSpreadsheet, FileImage, FileText, RefreshCw, Lock, Printer, Edit, Save, Presentation, Bold, Italic, Underline, AlignLeft, AlignCenter, AlignRight, AlignJustify, ImagePlus, Trash2, Maximize2, Minimize2, X, KeyRound } from "lucide-react";
 import AutomatedDocumentDrafter from "./AutomatedDocumentDrafter";
+import ApiKeyModal from "./ApiKeyModal";
+import { getActiveAuth, hasAnyKey } from "../lib/aiKeys";
+import { useLanguage } from "../contexts";
 
 interface DocumentConverterProps {
   userProfile: UserProfile | null;
@@ -29,6 +32,16 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
   const [selectedAiType, setSelectedAiType] = useState<string>("");
   const [draftText, setDraftText] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("Lao");
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [hasUserKey, setHasUserKey] = useState<boolean>(() => hasAnyKey());
+  const { isLao } = useLanguage();
+
+  // Keep the "has key" indicator in sync when the user saves keys.
+  useEffect(() => {
+    const sync = () => setHasUserKey(hasAnyKey());
+    window.addEventListener("laodocs_ai_keys_change", sync);
+    return () => window.removeEventListener("laodocs_ai_keys_change", sync);
+  }, []);
 
   useEffect(() => {
     const fetchTemplates = async () => {
@@ -429,12 +442,20 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         documentContext: instruction,
         targetLanguage: targetLanguage,
       };
-      
+
       if (referenceFileBase64 && referenceFileMimeType) {
         payload.referenceFormatFileBase64 = referenceFileBase64;
         payload.referenceFormatFileMimeType = referenceFileMimeType;
       }
-      
+
+      // Attach the user's own API key (if they added one).
+      const auth = getActiveAuth();
+      if (auth) {
+        payload.userApiKey = auth.userApiKey;
+        payload.provider = auth.provider;
+        if (auth.model) payload.model = auth.model;
+      }
+
       const data = await fetchBackend("/api/gemini/convert", payload);
       
       setConvertedResult(data);
@@ -480,7 +501,13 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
   const checkToolUsageAllowed = (toolName: string): { allowed: boolean; error?: string } => {
     const isGuest = !userProfile;
     const tier = userProfile ? userProfile.subscriptionTier : "guest";
-    
+
+    // When the user brings their own API key, everything is unlimited —
+    // they are paying for their own usage.
+    if (hasAnyKey()) {
+      return { allowed: true };
+    }
+
     // Tool 5 is always unlimited for all users
     if (toolName === "font-convert") {
       return { allowed: true };
@@ -695,12 +722,19 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
         const convertedDocs = [];
         for (const f of files) {
           const base64Data = await getFileBase64(f);
-          const payload = {
+          const payload: any = {
             fileBase64: base64Data,
             mimeType: f.type,
             promptType: promptTypeArg,
             targetLanguage: targetLanguage,
           };
+          // Attach the user's own API key (if they added one).
+          const auth = getActiveAuth();
+          if (auth) {
+            payload.userApiKey = auth.userApiKey;
+            payload.provider = auth.provider;
+            if (auth.model) payload.model = auth.model;
+          }
           const data = await fetchBackend("/api/gemini/convert", payload);
           data.title = f.name; // Use filename for title
           convertedDocs.push(data);
@@ -1224,6 +1258,25 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
   return (
     <div className="space-y-6" id="document-converter-card">
+      {/* Bring-your-own-key bar */}
+      <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
+        <div className="flex items-center gap-2 min-w-0">
+          <KeyRound className={`w-4 h-4 shrink-0 ${hasUserKey ? "text-emerald-500" : "text-tiffany-500"}`} />
+          <span className="text-[11px] text-slate-600 dark:text-slate-300 truncate">
+            {hasUserKey
+              ? (isLao ? "ກຳລັງໃຊ້ກະແຈ AI ຂອງທ່ານ • ໃຊ້ໄດ້ບໍ່ຈຳກັດ" : "Using your own AI key • unlimited")
+              : (isLao ? "ໃສ່ກະແຈ AI ຂອງທ່ານ (Gemini / OpenAI / OpenRouter) ເພື່ອໃຊ້ບໍ່ຈຳກັດ" : "Add your AI key (Gemini / OpenAI / OpenRouter) for unlimited use")}
+          </span>
+        </div>
+        <button
+          onClick={() => setShowApiKeyModal(true)}
+          className="shrink-0 text-[11px] font-bold px-3 py-1.5 rounded-lg bg-tiffany-500 hover:bg-tiffany-600 text-white cursor-pointer flex items-center gap-1 transition"
+        >
+          <KeyRound className="w-3.5 h-3.5" />
+          {hasUserKey ? (isLao ? "ຈັດການກະແຈ" : "Manage") : (isLao ? "ໃສ່ກະແຈ" : "Add key")}
+        </button>
+      </div>
+
       {/* Upper Interaction Area */}
       {!activeDocument ? (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
@@ -2353,6 +2406,10 @@ export default function DocumentConverter({ userProfile, documents, onDocumentSa
 
           </div>
         </div>
+      )}
+
+      {showApiKeyModal && (
+        <ApiKeyModal onClose={() => setShowApiKeyModal(false)} isLao={isLao} />
       )}
     </div>
   );

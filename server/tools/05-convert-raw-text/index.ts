@@ -1,7 +1,7 @@
-import { callGeminiConvert, GeminiResponseSchema } from "../../utils/geminiClient";
+import { callGeminiConvert, GeminiResponseSchema, AIAuth } from "../../utils/geminiClient";
 import { convertSaysetthaToUnicode } from "./converter";
 
-export async function convertRawText(text: string): Promise<GeminiResponseSchema> {
+export async function convertRawText(text: string, auth?: AIAuth): Promise<GeminiResponseSchema> {
     const preConvertedText = convertSaysetthaToUnicode(text);
 
     const promptString = `
@@ -19,5 +19,5 @@ Text to fix and format:
 ${preConvertedText}
 """
 `;
-    return callGeminiConvert([{ text: promptString }], "font-convert", false);
+    return callGeminiConvert([{ text: promptString }], "font-convert", false, undefined, auth);
 }
