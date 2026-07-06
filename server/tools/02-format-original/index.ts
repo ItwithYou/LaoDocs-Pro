@@ -1,8 +1,8 @@
-import { callGeminiConvert, GeminiResponseSchema } from "../../utils/geminiClient";
+import { callGeminiConvert, GeminiResponseSchema, AIAuth } from "../../utils/geminiClient";
 import { buildDocumentPart } from "../../utils/documentParser";
 import { formatInstruction } from "../../utils/prompts";
 
-export async function formatOriginal(fileBase64: string, mimeType: string): Promise<GeminiResponseSchema> {
+export async function formatOriginal(fileBase64: string, mimeType: string, auth?: AIAuth): Promise<GeminiResponseSchema> {
     if (!fileBase64 || !mimeType) {
         throw new Error("Missing file base64 data or mimeType");
     }
@@ -25,7 +25,7 @@ ${formatInstruction}
         { text: "Format the document verbatim in its original language according to instructions." }
     ];
 
-    const response = await callGeminiConvert(contents, "format-original", false, systemPrompt.trim());
+    const response = await callGeminiConvert(contents, "format-original", false, systemPrompt.trim(), auth);
     const rawText = response.convertedText || "";
 
     // Apply standard user dual-font configuration and A4 margins and fallback properties

@@ -1,7 +1,7 @@
-import { callGeminiConvert, GeminiResponseSchema } from "../../utils/geminiClient";
+import { callGeminiConvert, GeminiResponseSchema, AIAuth } from "../../utils/geminiClient";
 import { buildDocumentPart } from "../../utils/documentParser";
 
-export async function retypeDocument(fileBase64: string, mimeType: string): Promise<GeminiResponseSchema> {
+export async function retypeDocument(fileBase64: string, mimeType: string, auth?: AIAuth): Promise<GeminiResponseSchema> {
     if (!fileBase64 || !mimeType) {
         throw new Error("Missing file base64 data or mimeType");
     }
@@ -27,7 +27,7 @@ CRITICAL DIRECTIONS:
         { text: "Retype this document exactly, verbatim in the original language, adhering to the transcription rules." }
     ];
 
-    const response = await callGeminiConvert(contents, "retype", false, systemPrompt.trim());
+    const response = await callGeminiConvert(contents, "retype", false, systemPrompt.trim(), auth);
     const rawText = response.convertedText || "";
     
     // We will ensure it is wrapped in an A4 container for the frontend

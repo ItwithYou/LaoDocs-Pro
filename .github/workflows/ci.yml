@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dependencies (@tailwindcss/oxide, @vitejs/plugin-react, pdfjs-dist)
+        # require Node 20+. Node 18 is intentionally not tested.
+        node-version: [20.x, 22.x]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+
+    # `npm install` also runs the production build via the `postinstall` script
+    # (vite build + esbuild server bundle), so this validates the build too.
+    - name: Install dependencies and build
+      run: npm install
+
+    - name: Type-check
+      run: npm run lint

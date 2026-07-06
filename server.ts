@@ -64,7 +64,7 @@ app.get("/api/admin/get-api-keys", async (req, res) => {
         masked,
         status,
         errorMessage,
-        isDefault: k === "AIzaSyA5K4OEqBEsCrQPBzLadiRg-BN6YZXzGO4",
+        isDefault: false,
         isEnv: k === process.env.GEMINI_API_KEY
       });
     }
@@ -78,16 +78,26 @@ app.get("/api/admin/get-api-keys", async (req, res) => {
 // AI Document Parser & Font Converter endpoint
 app.post("/api/gemini/convert", async (req, res) => {
   try {
-    const { 
-        fileBase64, 
-        mimeType, 
-        promptType, 
-        rawLaoText, 
-        documentContext, 
-        referenceFormatFileBase64, 
+    const {
+        fileBase64,
+        mimeType,
+        promptType,
+        rawLaoText,
+        documentContext,
+        referenceFormatFileBase64,
         referenceFormatFileMimeType,
-        targetLanguage
+        targetLanguage,
+        userApiKey,
+        provider,
+        model
     } = req.body;
+
+    // "Bring your own key": the user's own API key (Gemini/OpenAI/OpenRouter) is
+    // sent per-request and never stored on the server. Falls back to the server
+    // env key only when the user hasn't supplied one.
+    const auth = (userApiKey && String(userApiKey).trim())
+      ? { apiKey: String(userApiKey).trim(), provider, model }
+      : undefined;
 
     let isWordDoc = false;
     let processedRawText = rawLaoText || "";
@@ -100,19 +110,19 @@ app.post("/api/gemini/convert", async (req, res) => {
     let result;
 
     if (promptType === "generate") {
-        result = await draftDocument(processedRawText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType, targetLanguage);
-    } 
+        result = await draftDocument(processedRawText, documentContext, referenceFormatFileBase64, referenceFormatFileMimeType, targetLanguage, auth);
+    }
     else if (promptType === "font-convert" || isWordDoc) {
-        result = await convertRawText(processedRawText);
-    } 
+        result = await convertRawText(processedRawText, auth);
+    }
     else if (promptType === "retype") {
-        result = await retypeDocument(fileBase64, mimeType);
-    } 
+        result = await retypeDocument(fileBase64, mimeType, auth);
+    }
     else if (promptType === "format-original") {
-        result = await formatOriginal(fileBase64, mimeType);
-    } 
+        result = await formatOriginal(fileBase64, mimeType, auth);
+    }
     else {
-        result = await processRecommended(fileBase64, mimeType, targetLanguage);
+        result = await processRecommended(fileBase64, mimeType, targetLanguage, auth);
     }
 
     return res.json(result);
@@ -371,24 +381,41 @@ app.post("/api/export/docx", async (req, res) => {
           footer: 720,
           gutter: 0
         },
-        font: "Times New Roman"
+        // Keep the Lao font on the fallback path too, otherwise Lao glyphs
+        // render as empty boxes when the primary generation fails.
+        font: "Phetsarath OT"
       });
     }
 
     const zip = await JSZip.loadAsync(fileBuffer);
 
+    // Dual-font mapping: Latin letters & digits use Times New Roman, while Lao
+    // (a complex script) is routed to Phetsarath OT via the w:cs / w:eastAsia
+    // slots. If a viewer ever shows Lao as boxes, set every typeface below to
+    // "Phetsarath OT" to force the Lao font everywhere.
     const applyDualFonts = async (filePath) => {
       if (zip.file(filePath)) {
         let xml = await zip.file(filePath).async("string");
-        // Force ASCII, HAnsi, Complex Script, and EastAsia font mappings to map explicitly to dual fonts
-        // Clean out any conflicting theme fonts that trigger default Calibri rendering in Word
-        xml = xml.replace(/<w:rFonts\b[^>]*?\/?>/g, '<w:rFonts w:ascii="Phetsarath OT" w:hAnsi="Phetsarath OT" w:cs="Phetsarath OT" w:eastAsia="Phetsarath OT" w:hint="default" />');
+        xml = xml.replace(/<w:rFonts\b[^>]*?\/?>/g, '<w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Phetsarath OT" w:eastAsia="Phetsarath OT" w:hint="default" />');
+        zip.file(filePath, xml);
+      }
+    };
+
+    // Rewrite the theme font scheme so Word never falls back to Calibri for
+    // either Latin or Lao text.
+    const applyThemeFonts = async (filePath) => {
+      if (zip.file(filePath)) {
+        let xml = await zip.file(filePath).async("string");
+        xml = xml.replace(/<a:latin\b[^>]*?\/?>/g, '<a:latin typeface="Times New Roman"/>');
+        xml = xml.replace(/<a:ea\b[^>]*?\/?>/g, '<a:ea typeface="Phetsarath OT"/>');
+        xml = xml.replace(/<a:cs\b[^>]*?\/?>/g, '<a:cs typeface="Phetsarath OT"/>');
         zip.file(filePath, xml);
       }
     };
 
     await applyDualFonts("word/styles.xml");
     await applyDualFonts("word/document.xml");
+    await applyThemeFonts("word/theme/theme1.xml");
 
     const modifiedBuffer = await zip.generateAsync({ type: "nodebuffer" });
     const buffer = Buffer.from(modifiedBuffer);

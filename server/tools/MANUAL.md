@@ -42,31 +42,24 @@ All tools (except `01-retype`, which is now offline) use the shared Gemini clien
 **👉 `/server/utils/geminiClient.ts`**
 
 ### 1. Updating the API Key:
-In `/server/utils/geminiClient.ts`, you will see:
-```typescript
-const KEY_CANDIDATES: string[] = ["AIzaSyAwwypXuLM-Obiup6eHQuBQQbuGPbu4LDM"];
-```
-You can add multiple keys here. If one expires, it will automatically try the next one:
-```typescript
-const KEY_CANDIDATES: string[] = [
-    "YOUR_NEW_API_KEY_HERE",
-    "ANOTHER_BACKUP_KEY"
-];
-```
+API keys are **not** hard-coded anymore (that would leak the secret in the repo).
+Instead, set the `GEMINI_API_KEY` environment variable:
+- **Locally:** copy `.env.example` to `.env.local` and paste your key.
+- **In production (Hostinger):** add `GEMINI_API_KEY` in the host's environment variables panel.
+
+Admins can also add or rotate keys at runtime through the in-app **Settings** panel
+(this calls `addRuntimeApiKey` in `/server/utils/geminiClient.ts`).
 
 ### 2. Updating the AI Model:
-In the same file, you can change which model is used. For example, upgrading from `1.5` to `3.5`.
+The model is controlled centrally in `/server/utils/geminiClient.ts`:
 ```typescript
 export const getModelForPromptType = (promptType: string) => {
-  if (promptType === "retype") {
-    // We don't use this anymore since it's local, but for quick tools:
-    return "gemini-3.5-flash"; 
-  }
-  // This is used for generating the formal drafts and translating:
-  return "gemini-3.1-pro-preview"; 
+  return process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
 };
 ```
-Whenever Google releases a new model, just update the string here and restart your server.
+To change it without editing code, set the `GEMINI_MODEL` environment variable.
+Whenever Google releases a new model, update the default string here (or the env var)
+and restart your server.
 
 ---
 

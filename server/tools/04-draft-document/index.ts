@@ -1,11 +1,12 @@
-import { callGeminiConvert, GeminiResponseSchema } from "../../utils/geminiClient";
+import { callGeminiConvert, GeminiResponseSchema, AIAuth } from "../../utils/geminiClient";
 
 export async function draftDocument(
     rawLaoText: string,
     documentContext: string, // Used for documentType
     referenceFormatFileBase64?: string,
     referenceFormatFileMimeType?: string,
-    targetLanguage?: string // Added targetLanguage
+    targetLanguage?: string, // Added targetLanguage
+    auth?: AIAuth
 ): Promise<GeminiResponseSchema> {
     
     // Validate targetLanguage
@@ -35,6 +36,6 @@ Please directly return the final document content structured with HTML elements 
 `;
 
     const contents: any[] = [{ text: promptString }];
-    return callGeminiConvert(contents, "generate", false);
+    return callGeminiConvert(contents, "generate", false, undefined, auth);
 }
 

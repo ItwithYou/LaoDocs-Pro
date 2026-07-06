@@ -1,8 +1,8 @@
-import { callGeminiConvert, GeminiResponseSchema } from "../../utils/geminiClient";
+import { callGeminiConvert, GeminiResponseSchema, AIAuth } from "../../utils/geminiClient";
 import { buildDocumentPart } from "../../utils/documentParser";
 import { formatInstruction, templateInstruction } from "../../utils/prompts";
 
-export async function processRecommended(fileBase64: string, mimeType: string, targetLanguage: string = "Lao"): Promise<GeminiResponseSchema> {
+export async function processRecommended(fileBase64: string, mimeType: string, targetLanguage: string = "Lao", auth?: AIAuth): Promise<GeminiResponseSchema> {
     if (!fileBase64 || !mimeType) {
         throw new Error("Missing file base64 data or mimeType");
     }
@@ -23,5 +23,5 @@ ${templateInstruction}
     ];
 
     // NOTE: This uses OCR system prompt addition
-    return callGeminiConvert(contents, "ocr", true);
+    return callGeminiConvert(contents, "ocr", true, undefined, auth);
 }
